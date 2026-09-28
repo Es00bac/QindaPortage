@@ -61,6 +61,32 @@ add_library(qportage_agent STATIC
 )
 target_link_libraries(qportage_agent PUBLIC qportage_core Qt6::Core Qt6::Network)
 
+# --- ops ---
+# Plans, virtual `emerge --pretend`, and the executor that drives the root
+# helper. Still no QML and no network: tested offline with fake programs.
+add_library(qportage_ops STATIC
+    src/ops/executor.cpp
+    src/ops/executor.h
+    src/ops/plan.cpp
+    src/ops/plan.h
+    src/ops/pretendrunner.cpp
+    src/ops/pretendrunner.h
+)
+target_link_libraries(qportage_ops PUBLIC qportage_core Qt6::Core)
+# Development trees run the helper from the source tree (sudo -n).
+target_compile_definitions(qportage_ops PRIVATE QINDAPORTAGE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# AGENT-CONTRACT: Executor::InstalledHelper is
+# ${CMAKE_INSTALL_FULL_LIBEXECDIR}/qindaportage/qindaportage-apply with the
+# default /usr prefix, and the polkit policy's exec.path names the same file.
+install(PROGRAMS helper/qindaportage-apply
+        DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/qindaportage)
+install(FILES helper/qportage_state.py helper/qportage_validate.py
+        DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/qindaportage)
+install(FILES helper/org.qindaqt.portage.policy
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
+# --- end ops ---
+
 # Developer tool: prints what the core sees on this machine.
 qt_add_executable(qportage-dump tools/qportage-dump.cpp)
 target_link_libraries(qportage-dump PRIVATE qportage_core)

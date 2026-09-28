@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""qindaportage-apply: the only part of QindaPortage that changes the system.
+
+Runs as root (pkexec, polkit action org.qindaqt.portage.apply). Reads an
+approved plan (JSON) on stdin, re-validates it, snapshots the managed state,
+applies it, runs emerge, journals the transaction and prints JSON lines.
+
+  qindaportage-apply apply < plan.json
+  qindaportage-apply revert <txn>
+  qindaportage-apply list
+  qindaportage-apply show <txn>
+
+AGENT-CONTRACT: the stdout protocol (docs/helper.md) is parsed by
+src/ops/executor.cpp; the plan format is Ops::Plan::toJson (src/ops/plan.cpp).
+"""
+
+import argparse
+import fcntl
+import json
+import os
+import re
+import secrets
+import shlex
+import signal
+import subprocess
+import sys
+import time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from qportage_state import State, now  # noqa: E402
+from qportage_validate import (CONFIG_KINDS, TXN_RE, ValidationError,  # noqa: E402
+                               config_line, parse_atom, split_name_version, validate_plan)
+
+OVERLAY = 'var/db/repos/qinda-local'
+MANAGED_NAME = '90-qindaportage'
+SAFE_PATH = '/usr/sbin:/usr/bin:/sbin:/bin'
+# Environment that would change what Portage does behind the operator's back.
+DROP_ENV = ('USE', 'FEATURES', 'MAKEOPTS', 'ACCEPT_KEYWORDS', 'ACCEPT_LICENSE',
+            'EMERGE_DEFAULT_OPTS', 'ROOT', 'EPREFIX', 'SYSROOT', 'PYTHONPATH',
+            'PYTHONHOME', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS')
+MERGED_RE = re.compile(r'^>>> Completed \(\d+ of \d+\) (\S+?)(?:::\S+)?\s*$')
+INSTALLING_RE = re.compile(r'^>>> Installing \(\d+ of \d+\) (\S+?)(?:::\S+)?\s*$')
+UNMERGED_RE = re.compile(r'^>>> Unmerging(?: \(\d+ of \d+\))? (\S+?)(?:::\S+)?\.\.\.')
+
+
+class Interrupted(Exception):
+    pass
+
+
+def emit(**event):
+    sys.stdout.write(json.dumps(event, ensure_ascii=False) + '\n')
+    sys.stdout.flush()
+
+
+def cpv_key(cpv):
+    cat, _, pf = cpv.partition('/')
+    split = split_name_version(pf)
+    return ('%s/%s' % (cat, split[0]), split[1]) if split else (cpv, '')
+
+
+class Helper:
+    def __init__(self, args):
+        self.root = os.path.abspath(args.root) if args.root else '/'
+        state_dir = args.state_dir or self.path('var/lib/qindaportage')
+        self.state = State(self.root, state_dir, git=args.git)
+        self.emerge = shlex.split(args.emerge_cmd)
+        self.ebuild = shlex.split(args.ebuild_cmd)
+        self.child = None
+        self.env = {k: v for k, v in os.environ.items()
+                    if k not in DROP_ENV and not k.startswith('PORTAGE_')}
+        self.env['PATH'] = SAFE_PATH if not args.root else os.environ.get('PATH', SAFE_PATH)
+        self.env['NOCOLOR'] = 'true'
+
+    def path(self, rel):
+        return os.path.join(self.root, rel)
+
+    # --- running programs ---
+
+    def run(self, argv, collect=None):
+        """Runs argv without a shell, streaming its output as log events."""
+        emit(event='log', line='$ ' + ' '.join(shlex.quote(a) for a in argv))
+        self.child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                      stderr=subprocess.STDOUT, env=self.env, cwd=self.root)
+        for raw in self.child.stdout:
+            line = raw.decode('utf-8', errors='replace').rstrip('\n')
+            emit(event='log', line=line)
+            if collect is not None:
+                collect(line)
+        code = self.child.wait()
+        self.child = None
+        return code
+
+    # --- configuration ---
+
+    def managed_file(self, config_file):
+        """AGENT-CONTRACT: same placement as PretendRunner::managedFile()."""
+        base = self.path('etc/portage/' + config_file)
+        if os.path.exists(base) and not os.path.isdir(base):
+            return base, True
+        os.makedirs(base, mode=0o755, exist_ok=True)
+        return os.path.join(base, MANAGED_NAME), False
+
+    def write_config(self, step, txn):
+        target, single = self.managed_file(CONFIG_KINDS[step['kind']])
+        line = config_line(step)
+        existing = ''
+        if os.path.exists(target):
+            with open(target, encoding='utf-8', errors='replace') as f:
+                existing = f.read()
+        if line in (l.strip() for l in existing.splitlines()):
+            emit(event='log', line='%s already has: %s' % (target, line))
+            return
+        why = step['rationale'] or 'QindaPortage plan'
+        text = '\n# %s — %s (txn %s)\n%s\n' % (time.strftime('%Y-%m-%d'), why, txn, line)
+        if single:
+            text = '\n# BEGIN qindaportage %s%s# END qindaportage %s\n' % (txn, text, txn)
+        with open(target, 'a', encoding='utf-8') as f:
+            f.write(text)
+        os.chmod(target, 0o644)
+        emit(event='log', line='%s: %s' % (target, line))
+
+    def write_patch(self, step):
+        atom = parse_atom(step['atom'])
+        leaf = atom['pn'] + ('-' + atom['version'] if atom['version'] else '')
+        directory = self.path('etc/portage/patches/%s/%s' % (atom['cat'], leaf))
+        os.makedirs(directory, mode=0o755, exist_ok=True)
+        target = os.path.join(directory, step['path'])
+        self.write_file(target, step['content'])
+
+    def write_file(self, target, content):
+        tmp = target + '.qindaportage-tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(content)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, target)
+        emit(event='log', line='wrote %s' % target)
+
+    def ensure_overlay(self, category):
+        overlay = self.path(OVERLAY)
+        for d in ('metadata', 'profiles'):
+            os.makedirs(os.path.join(overlay, d), mode=0o755, exist_ok=True)
+        layout = os.path.join(overlay, 'metadata/layout.conf')
+        if not os.path.exists(layout):
+            self.write_file(layout, 'masters = gentoo\nthin-manifests = true\nsign-manifests = false\n')
+        repo_name = os.path.join(overlay, 'profiles/repo_name')
+        if not os.path.exists(repo_name):
+            self.write_file(repo_name, 'qinda-local\n')
+        categories_file = os.path.join(overlay, 'profiles/categories')
+        categories = []
+        if os.path.exists(categories_file):
+            with open(categories_file, encoding='utf-8') as f:
+                categories = [c.strip() for c in f if c.strip()]
+        if category not in categories:
+            self.write_file(categories_file, '\n'.join(sorted(categories + [category])) + '\n')
+        section = ('[qinda-local]\nlocation = /%s\npriority = 50\nauto-sync = no\n' % OVERLAY)
+        repos = self.path('etc/portage/repos.conf')
+        if os.path.isdir(repos) or not os.path.exists(repos):
+            os.makedirs(repos, mode=0o755, exist_ok=True)
+            conf = os.path.join(repos, 'qinda-local.conf')
+            if not os.path.exists(conf):
+                self.write_file(conf, section)
+        else:
+            with open(repos, encoding='utf-8') as f:
+                if '[qinda-local]' in f.read():
+                    return
+            with open(repos, 'a', encoding='utf-8') as f:
+                f.write('\n' + section)
+
+    def write_ebuild(self, step, manifests):
+        category = step['path'].split('/')[0]
+        self.ensure_overlay(category)
+        target = self.path(OVERLAY + '/' + step['path'])
+        os.makedirs(os.path.dirname(target), mode=0o755, exist_ok=True)
+        self.write_file(target, step['content'])
+        if target.endswith('.ebuild') and target not in manifests:
+            manifests.append(target)
+
+    # --- installed packages ---
+
+    def installed(self):
+        """{'cat/pn': ['ver', ...]} from the installed-package database."""
+        out = {}
+        vardb = self.path('var/db/pkg')
+        if not os.path.isdir(vardb):
+            return out
+        for cat in os.listdir(vardb):
+            cat_dir = os.path.join(vardb, cat)
+            if not os.path.isdir(cat_dir):
+                continue
+            for pf in os.listdir(cat_dir):
+                split = split_name_version(pf)
+                if split and not pf.startswith('-MERGING-'):
+                    out.setdefault('%s/%s' % (cat, split[0]), []).append(split[1])
+        return out
+
+    # --- subcommands ---
+
+    def apply(self, raw):
+        try:
+            plan = json.loads(raw)
+            steps = validate_plan(plan)
+        except (ValueError, ValidationError) as e:
+            emit(event='result', ok=False, txn='', error='rejected: %s' % e)
+            return 2
+        self.state.ensure()
+        txn = plan.get('id') if isinstance(plan.get('id'), str) and TXN_RE.match(plan.get('id', '')) else ''
+        if not txn or os.path.exists(self.state.journal_path(txn)):
+            txn = time.strftime('%Y%m%d-%H%M%S-', time.gmtime()) + secrets.token_hex(2)
+        entry = {'id': txn, 'kind': 'apply', 'title': str(plan.get('title', ''))[:200],
+                 'goal': str(plan.get('goal', ''))[:2000], 'started': now(), 'steps': steps,
+                 'commands': [], 'merged': [], 'removed': [], 'ok': False, 'error': ''}
+        before = self.installed()
+        entry['pre'] = self.state.snapshot('before %s: %s' % (txn, entry['title']))
+        self.state.write_journal(entry)
+        manifests = []
+        installing = []
+
+        def collect(line):
+            m = MERGED_RE.match(line)
+            if m and m.group(1) not in entry['merged']:
+                entry['merged'].append(m.group(1))
+            m = INSTALLING_RE.match(line)
+            if m:
+                installing.append(m.group(1))
+            m = UNMERGED_RE.match(line)
+            if m and m.group(1) not in entry['removed']:
+                entry['removed'].append(m.group(1))
+
+        def run_emerge(args):
+            argv = self.emerge + ['--color=n', '--nospinner'] + args
+            entry['commands'].append(argv)
+            if self.run(argv, collect) != 0:
+                raise RuntimeError('emerge %s failed' % ' '.join(args))
+
+        def flush_manifests():
+            while manifests:
+                ebuild = manifests.pop(0)
+                argv = self.ebuild + [ebuild, 'manifest']
+                entry['commands'].append(argv)
+                if self.run(argv) != 0:
+                    raise RuntimeError('Manifest for %s failed' % os.path.basename(ebuild))
+
+        try:
+            for index, step in enumerate(steps):
+                emit(event='step', index=index, text=describe(step))
+                kind = step['kind']
+                if kind in CONFIG_KINDS:
+                    self.write_config(step, txn)
+                elif kind == 'patch':
+                    self.write_patch(step)
+                elif kind == 'ebuild':
+                    self.write_ebuild(step, manifests)
+                else:
+                    flush_manifests()
+                    if kind == 'emerge':
+                        run_emerge(step['options'] + step['values'])
+                    elif kind == 'unmerge':
+                        run_emerge(['--deselect'] + step['values'])
+                        run_emerge(['--depclean'] + step['values'])
+                    elif kind == 'depclean':
+                        run_emerge(['--depclean'] + step['values'])
+                    elif kind == 'sync':
+                        run_emerge(['--sync'] + step['values'])
+            flush_manifests()
+            entry['ok'] = True
+        except Interrupted:
+            entry['error'] = 'interrupted'
+        except (OSError, RuntimeError, ValidationError) as e:
+            entry['error'] = str(e)
+        if not entry['merged'] and installing:
+            entry['merged'] = installing
+        entry['previous'] = {}
+        for cpv in entry['merged'] + entry['removed']:
+            key, _ = cpv_key(cpv)
+            if key in before:
+                entry['previous'][key] = sorted(before[key])
+        entry['post'] = self.state.snapshot('after %s (%s)' % (txn, 'ok' if entry['ok'] else 'failed'))
+        entry['touched'] = self.state.changed(entry['pre'], entry['post'])
+        entry['ended'] = now()
+        self.state.write_journal(entry)
+        emit(event='result', ok=entry['ok'], txn=txn, error=entry['error'],
+             merged=entry['merged'], removed=entry['removed'])
+        return 0 if entry['ok'] else 1
+
+    def revert(self, txn):
+        if not TXN_RE.match(txn):
+            emit(event='result', ok=False, txn=txn, error='bad transaction id')
+            return 2
+        self.state.ensure()
+        try:
+            entry = self.state.read_journal(txn)
+        except (OSError, ValueError):
+            emit(event='result', ok=False, txn=txn, error='no such transaction')
+            return 2
+        if entry.get('kind') != 'apply' or 'post' not in entry:
+            emit(event='result', ok=False, txn=txn, error='only finished apply transactions can be reverted')
+            return 2
+        if entry.get('reverted_by'):
+            emit(event='result', ok=False, txn=txn, error='already reverted by %s' % entry['reverted_by'])
+            return 2
+        rid = time.strftime('%Y%m%d-%H%M%S-', time.gmtime()) + secrets.token_hex(2)
+        record = {'id': rid, 'kind': 'revert', 'of': txn, 'started': now(), 'restored': [],
+                  'conflicts': [], 'ok': False, 'error': ''}
+        record['pre'] = self.state.snapshot('before revert of %s' % txn)
+        for path in entry.get('touched', []):
+            # AGENT-GUARD: only files this transaction changed, and only when
+            # nobody changed them since; anything else is reported, not touched.
+            post = self.state.blob(entry['post'], path)
+            if self.state.current(path) != post:
+                record['conflicts'].append(path)
+                emit(event='log', line='changed since %s, left alone: /%s' % (txn, path))
+                continue
+            self.state.restore(path, self.state.blob(entry['pre'], path))
+            record['restored'].append(path)
+            emit(event='log', line='restored /%s' % path)
+        commands = undo_commands(entry)
+        record['undo'] = commands
+        record['post'] = self.state.snapshot('after revert of %s' % txn)
+        record['ok'] = not record['conflicts']
+        if record['conflicts']:
+            record['error'] = '%d file(s) changed since the transaction were left alone' % len(record['conflicts'])
+        record['ended'] = now()
+        self.state.write_journal(record)
+        entry['reverted_by'] = rid
+        self.state.write_journal(entry)
+        emit(event='undo', commands=commands)
+        emit(event='result', ok=record['ok'], txn=rid, error=record['error'],
+             restored=record['restored'], conflicts=record['conflicts'])
+        return 0 if record['ok'] else 1
+
+    def list(self):
+        self.state.ensure()
+        for e in self.state.list_journal():
+            emit(event='txn', id=e.get('id'), kind=e.get('kind'), title=e.get('title', ''),
+                 ok=e.get('ok'), started=e.get('started'), ended=e.get('ended'),
+                 reverted_by=e.get('reverted_by'), of=e.get('of'))
+        return 0
+
+    def show(self, txn):
+        if not TXN_RE.match(txn):
+            return 2
+        self.state.ensure()
+        try:
+            print(json.dumps(self.state.read_journal(txn), sort_keys=True))
+        except (OSError, ValueError):
+            return 2
+        return 0
+
+
+def describe(step):
+    kind, values = step['kind'], ' '.join(step['values'])
+    if kind in CONFIG_KINDS:
+        return '%s: %s' % (CONFIG_KINDS[kind], config_line(step))
+    if kind == 'patch':
+        return 'patch %s for %s' % (step['path'], step['atom'])
+    if kind == 'ebuild':
+        return 'write %s in qinda-local' % step['path']
+    if kind == 'emerge':
+        return 'emerge %s' % ' '.join(step['options'] + step['values'])
+    return '%s %s' % (kind, values)
+
+
+def undo_commands(entry):
+    """Suggested commands to undo what the transaction merged or removed."""
+    out = []
+    previous = entry.get('previous', {})
+    for cpv in entry.get('merged', []):
+        key, _ = cpv_key(cpv)
+        old = [v for v in previous.get(key, []) if '%s-%s' % (key, v) != cpv]
+        if old:
+            out.append('emerge --ask --oneshot --usepkg =%s-%s' % (key, old[-1]))
+        else:
+            out.append('emerge --ask --depclean %s' % key)
+    for cpv in entry.get('removed', []):
+        out.append('emerge --ask --oneshot --usepkg =%s' % cpv)
+    return out
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog='qindaportage-apply')
+    parser.add_argument('--root', help='test root prefix (never in production)')
+    parser.add_argument('--state-dir')
+    parser.add_argument('--emerge-cmd', default='emerge')
+    parser.add_argument('--ebuild-cmd', default='ebuild')
+    parser.add_argument('--git', default='git')
+    parser.add_argument('command', choices=('apply', 'revert', 'list', 'show'))
+    parser.add_argument('txn', nargs='?')
+    args = parser.parse_args(argv)
+    if os.geteuid() != 0 and not args.root:
+        emit(event='result', ok=False, txn='', error='qindaportage-apply must run as root')
+        return 2
+    os.umask(0o022)
+    helper = Helper(args)
+
+    def on_signal(signum, frame):
+        if helper.child is not None:
+            helper.child.terminate()
+        raise Interrupted()
+
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGINT, on_signal)
+    helper.state.ensure()
+    with open(os.path.join(helper.state.state_dir, 'lock'), 'w') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            emit(event='result', ok=False, txn='', error='another transaction is running')
+            return 2
+        if args.command == 'apply':
+            return helper.apply(sys.stdin.read())
+        if args.command == 'revert':
+            return helper.revert(args.txn or '')
+        if args.command == 'list':
+            return helper.list()
+        return helper.show(args.txn or '')
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
