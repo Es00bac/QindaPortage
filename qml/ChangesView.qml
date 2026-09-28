@@ -156,12 +156,17 @@ T.SplitView {
                     Repeater {
                         model: view.plan ? view.plan.configPreview : []
                         delegate: Tk.Box {
+                            id: fragment
                             required property string modelData
                             Tk.Flex.alignSelf: Tk.Flex.Stretch
                             padding: Tk.Theme.space.sm
                             radius: Tk.Theme.radius.sm
                             color: Tk.Theme.color.canvas
-                            Tk.Mono { text: parent.modelData; wrapMode: Text.WrapAnywhere; width: parent.width }
+                            Tk.Mono {
+                                objectName: "configFragment"
+                                text: fragment.modelData
+                                wrapMode: Text.WrapAnywhere
+                            }
                         }
                     }
                 }

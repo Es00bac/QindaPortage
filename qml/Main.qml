@@ -82,6 +82,14 @@ Tk.AppWindow {
         function onUnloaded(reason) { window.showNote(qsTr("Model unloaded (%1)").arg(reason)) }
     }
     Connections {
+        target: assistant
+        // The assistant verified its plan with pretend; show the same impact
+        // on the Changes page without another click.
+        function onAnswered(text) {
+            if (planModel.stepCount > 0 && !planModel.previewCurrent && !planModel.previewing) planModel.runPreview()
+        }
+    }
+    Connections {
         target: planModel
         function onApplyFinished(ok, txn, error, logTail) {
             systemModel.reload()

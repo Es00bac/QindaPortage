@@ -79,7 +79,12 @@ int main(int argc, char **argv)
                       QStringLiteral("page")});
     parser.addOption({QStringLiteral("select"), QStringLiteral("Select a package (category/name) at start"),
                       QStringLiteral("atom")});
-    // Verification seam: render the window, save the settled frame, exit.
+    // Verification seams: send a request at start (optionally on a tier),
+    // render the window, save the settled frame, exit.
+    parser.addOption({QStringLiteral("ask"), QStringLiteral("Send this request to the assistant once the system is loaded"),
+                      QStringLiteral("text")});
+    parser.addOption({QStringLiteral("tier"), QStringLiteral("Assistant endpoint for --ask (local, qinda)"),
+                      QStringLiteral("id")});
     parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Save a window screenshot to PATH and exit"),
                       QStringLiteral("path")});
     parser.process(application);
@@ -133,6 +138,15 @@ int main(int argc, char **argv)
     auto *window = qobject_cast<QQuickWindow *>(engine.rootObjects().value(0));
     if (window == nullptr) return 1;
 
+    if (parser.isSet(QStringLiteral("ask"))) {
+        const QString request = parser.value(QStringLiteral("ask"));
+        const QString tier = parser.value(QStringLiteral("tier"));
+        QObject::connect(&systemModel, &App::SystemModel::reloaded, &assistant, [&assistant, &planModel, request, tier] {
+            if (!tier.isEmpty() && tier != QLatin1String("local")) assistant.useEndpoint(tier);
+            planModel.setGoal(request);
+            assistant.send(request);
+        }, Qt::SingleShotConnection);
+    }
     systemModel.reload();
 
     if (parser.isSet(QStringLiteral("screenshot"))) {
