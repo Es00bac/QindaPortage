@@ -3,6 +3,7 @@
 
 #include "app/systemmodel.h"
 #include "core/atom.h"
+#include "core/repoindex.h"
 
 #include <QDir>
 #include <QFile>
@@ -61,18 +62,20 @@ QStringList Toolbox::suggestKeys(const QString &atomOrName, int limit) const
     const Atom a = Atom::parse(name);
     if (a.isValid()) name = a.name();
     else if (name.contains(QLatin1Char('/'))) name = name.section(QLatin1Char('/'), 1);
-    name = name.toLower();
-    QStringList exact, prefix, contains;
-    QString last;
-    for (const InstalledPackage &p : s->db.packages()) {
-        if (p.key() == last) continue;
-        last = p.key();
-        const QString n = p.name.toLower();
-        if (n == name) exact.append(p.key());
-        else if (n.startsWith(name)) prefix.append(p.key());
-        else if (name.size() >= 3 && n.contains(name)) contains.append(p.key());
+    QStringList out;
+    for (const SearchHit &h : s->index.search(name, limit)) out.append(h.key);
+    if (out.size() < limit) {
+        // Installed packages whose repository is gone are not in the index.
+        const QString lower = name.toLower();
+        QString last;
+        for (const InstalledPackage &p : s->db.packages()) {
+            if (p.key() == last || out.contains(p.key())) continue;
+            last = p.key();
+            if (p.name.toLower() == lower) out.append(p.key());
+            if (out.size() >= limit) break;
+        }
     }
-    return (exact + prefix + contains).mid(0, limit);
+    return out;
 }
 
 QString Toolbox::systemProfile() const
@@ -119,8 +122,15 @@ QString Toolbox::requestHints(const QString &text) const
         // Only exact name matches are hints; prefixes are noise.
         if (first.section(QLatin1Char('/'), 1).toLower() != word.section(QLatin1Char('/'), -1).toLower()) continue;
         const int idx = m_system->indexOf(first);
-        const InstalledPackage &p = s->db.packages().at(idx);
-        lines.append(QStringLiteral("\"%1\" is installed as %2 (%3)").arg(word, p.cpv(), p.repository));
+        if (idx >= 0) {
+            const InstalledPackage &p = s->db.packages().at(idx);
+            lines.append(QStringLiteral("\"%1\" is %2, installed (%3::%4)").arg(word, first, p.versionText, p.repository));
+        } else {
+            const AvailableVersion *best = s->index.bestVisibleVersion(first, s->acceptKeywords(), &s->config);
+            lines.append(QStringLiteral("\"%1\" is %2, not installed; best visible version %3").arg(
+                word, first, best ? best->version + QStringLiteral("::") + best->repo : QStringLiteral("none (keyworded or masked)")));
+        }
+        if (keys.size() > 1) lines.last() += QStringLiteral(" (other matches: %1)").arg(keys.mid(1).join(QStringLiteral(", ")));
     }
     return lines.join(QLatin1Char('\n'));
 }
@@ -129,21 +139,23 @@ QJsonObject Toolbox::findPackages(const QString &query) const
 {
     const SystemSnapshot *s = m_system->snapshot();
     if (!s) return error(QStringLiteral("system state is still loading"));
-    const QString q = query.trimmed().toLower();
+    const QString q = query.trimmed();
     if (q.isEmpty()) return error(QStringLiteral("empty query"));
-    QJsonArray installed;
-    QString last;
-    for (const InstalledPackage &p : s->db.packages()) {
-        if (installed.size() >= 15) break;
-        if (p.key() == last) continue;
-        if (p.key().toLower().contains(q) || p.description.toLower().contains(q)) {
-            last = p.key();
-            installed.append(QJsonObject{{QStringLiteral("atom"), p.key()},
-                                         {QStringLiteral("version"), p.versionText},
-                                         {QStringLiteral("description"), p.description.left(90)}});
+    QJsonArray hits;
+    for (const QVariant &v : m_system->searchPackages(q, 15)) {
+        const QVariantMap m = v.toMap();
+        QJsonObject o{{QStringLiteral("atom"), m.value(QStringLiteral("key")).toString()},
+                      {QStringLiteral("description"), m.value(QStringLiteral("description")).toString().left(90)},
+                      {QStringLiteral("bestVersion"), m.value(QStringLiteral("version")).toString()}};
+        if (m.value(QStringLiteral("installed")).toBool()) {
+            o[QStringLiteral("installed")] = m.value(QStringLiteral("installedVersion")).toString();
         }
+        hits.append(o);
     }
-    return QJsonObject{{QStringLiteral("installed"), installed}};
+    if (hits.isEmpty()) {
+        return error(QStringLiteral("nothing in any repository matches \"%1\"; for software outside Portage use probe_source with its URL").arg(q));
+    }
+    return QJsonObject{{QStringLiteral("matches"), hits}};
 }
 
 QJsonObject Toolbox::packageInfo(const QString &atom) const
@@ -153,8 +165,28 @@ QJsonObject Toolbox::packageInfo(const QString &atom) const
     const QString key = keyFromAtomText(atom);
     const int i = key.isEmpty() ? -1 : m_system->indexOf(key);
     if (i < 0) {
-        return error(QStringLiteral("%1 is not installed (or not a valid category/name)").arg(atom),
-                     suggestKeys(atom));
+        if (const AvailablePackage *ap = key.isEmpty() ? nullptr : s->index.find(key)) {
+            const AvailableVersion *best = s->index.bestVisibleVersion(key, s->acceptKeywords(), &s->config);
+            QJsonArray versions;
+            for (auto it = ap->versions.crbegin(); it != ap->versions.crend() && versions.size() < 8; ++it) {
+                const bool visible = !it->masked && RepoIndex::keywordsAccepted(it->keywords, s->acceptKeywords());
+                versions.append(QStringLiteral("%1:%2::%3%4").arg(it->version, it->slot, it->repo,
+                    it->masked ? QStringLiteral(" [masked]") : visible ? QString() : QStringLiteral(" [needs keyword ") + it->keywords.join(QLatin1Char(' ')).left(40) + QLatin1Char(']')));
+            }
+            QJsonArray flags;
+            if (best) {
+                for (const QString &f : best->iuse) {
+                    const QString flag = f.startsWith(QLatin1Char('+')) || f.startsWith(QLatin1Char('-')) ? f.mid(1) : f;
+                    flags.append(f + QStringLiteral(": ") + s->useDescriptions.describe(flag, key).left(80));
+                }
+            }
+            return QJsonObject{{QStringLiteral("atom"), key}, {QStringLiteral("installed"), false},
+                               {QStringLiteral("description"), ap->description},
+                               {QStringLiteral("bestVisible"), best ? best->version : QStringLiteral("none")},
+                               {QStringLiteral("versions"), versions}, {QStringLiteral("useFlags"), flags},
+                               {QStringLiteral("next"), QStringLiteral("pretend with this atom shows what installing it pulls in")}};
+        }
+        return error(QStringLiteral("%1 is neither installed nor in any repository").arg(atom), suggestKeys(atom));
     }
     const InstalledPackage &p = s->db.packages().at(i);
     const PackageGraph &g = s->graph;
@@ -249,6 +281,7 @@ QJsonObject Toolbox::useFlagInfo(const QString &flag) const
         (p.use.contains(flag) ? on : off).append(p.key());
     }
     return QJsonObject{{QStringLiteral("flag"), flag},
+                       {QStringLiteral("description"), s->useDescriptions.describe(flag)},
                        {QStringLiteral("enabledOn"), on.size() > 30 ? QJsonArray() : on},
                        {QStringLiteral("disabledOn"), off.size() > 30 ? QJsonArray() : off},
                        {QStringLiteral("enabledCount"), on.size()}, {QStringLiteral("disabledCount"), off.size()}};

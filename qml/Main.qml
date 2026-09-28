@@ -275,12 +275,12 @@ Tk.AppWindow {
                     visible: window.page === "activity"
                     plan: planModel
                 }
-                Tk.EmptyState {
+                SourcesView {
                     anchors.fill: parent
                     visible: window.page === "sources"
-                    iconName: "download"
-                    title: qsTr("Install from a URL")
-                    text: qsTr("Coming together: the source prober lands next.")
+                    sources: sourcesModel
+                    onAskRequested: function (text) { window.ask(text) }
+                    onPlanRequested: window.page = "changes"
                 }
             }
 

@@ -59,10 +59,6 @@ SystemModel::SystemModel(QObject *parent)
         m_snapshot = std::move(fresh);
         ++m_revision;
         Q_EMIT reloaded();
-    });
-    connect(&m_envWatcher, &QFutureWatcher<QMap<QString, QString>>::finished, this, [this] {
-        m_env = m_envWatcher.result();
-        if (m_snapshot) m_snapshot->config.setEnvironment(m_env);
         Q_EMIT environmentChanged();
     });
 }
@@ -70,7 +66,6 @@ SystemModel::SystemModel(QObject *parent)
 SystemModel::~SystemModel()
 {
     m_watcher.waitForFinished();
-    m_envWatcher.waitForFinished();
 }
 
 void SystemModel::reload()
@@ -84,14 +79,18 @@ void SystemModel::reload()
         auto *s = new SystemSnapshot;
         s->db.load();
         s->config.load();
+        s->config.setEnvironment(PortageConfig::loadEnvironment());
         // AGENT-GUARD: the graph keeps a pointer to its VarDb. The snapshot
         // is heap-allocated once and only its owning pointer moves, so the
         // address stays valid.
         s->graph.build(s->db, s->config);
+        s->index.load(s->config);
+        s->index.setInstalledLookup([s](const QString &key) { return s->isInstalled(key); });
+        s->useDescriptions.load(s->config);
+        s->history.load();
         s->loadMs = t.elapsed();
         return s;
     }));
-    m_envWatcher.setFuture(QtConcurrent::run([] { return PortageConfig::loadEnvironment(); }));
 }
 
 int SystemModel::indexOf(const QString &keyOrCpv) const
@@ -174,10 +173,18 @@ QVariantList SystemModel::categories() const
     return out;
 }
 
+QStringList SystemSnapshot::acceptKeywords() const
+{
+    const QStringList list = config.value(QStringLiteral("ACCEPT_KEYWORDS")).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    return list.isEmpty() ? QStringList{QStringLiteral("amd64")} : list;
+}
+
 QVariantList SystemModel::environment() const
 {
     QVariantList out;
-    for (auto it = m_env.cbegin(); it != m_env.cend(); ++it) {
+    if (!m_snapshot) return out;
+    const auto &env = m_snapshot->config.environment();
+    for (auto it = env.cbegin(); it != env.cend(); ++it) {
         out.append(QVariantMap{{QStringLiteral("name"), it.key()}, {QStringLiteral("value"), it.value()}});
     }
     return out;
@@ -274,6 +281,7 @@ QVariantList SystemModel::useFlags(const QString &key) const
     for (const QString &flag : p.iuse) {
         const UseOrigin o = m_snapshot->config.useOrigin(p, flag);
         out.append(QVariantMap{{QStringLiteral("flag"), flag}, {QStringLiteral("enabled"), o.enabled},
+                               {QStringLiteral("description"), m_snapshot->useDescriptions.describe(flag, p.key())},
                                {QStringLiteral("origin"), originName(o.source)}, {QStringLiteral("where"), o.where},
                                {QStringLiteral("locked"), o.source == UseOrigin::ProfileForce
                                                            || o.source == UseOrigin::ProfileMask}});
@@ -359,35 +367,47 @@ QVariantMap SystemModel::neighbourhood(const QString &key, int depth, bool forwa
     for (auto it = column.cbegin(); it != column.cend(); ++it) byColumn[it.value()].append(it.key());
     // AGENT-CONTRACT: DependencyGraphView.qml draws nodes at x/y with width
     // w and height NodeHeight; keep the constants in step.
-    constexpr double ColumnWidth = 250, NodeWidth = 210, RowHeight = 34;
+    // A layer taller than MaxRows wraps into several sub-columns so a
+    // package with 50 dependencies stays readable.
+    constexpr double ColumnWidth = 250, NodeWidth = 210, RowHeight = 34, LayerGap = 90;
+    constexpr int MaxRows = 14;
     int tallest = 0;
-    for (const auto &list : byColumn) tallest = std::max<int>(tallest, list.size());
+    for (const auto &list : byColumn) tallest = std::max<int>(tallest, std::min<int>(MaxRows, list.size()));
     QVariantList nodes;
+    double x = 0;
     for (auto it = byColumn.begin(); it != byColumn.end(); ++it) {
         auto &list = it.value();
-        std::sort(list.begin(), list.end(), [&](int a, int b) { return pkgs.at(a).key() < pkgs.at(b).key(); });
-        const double top = (tallest - list.size()) * RowHeight / 2.0;
-        for (int row = 0; row < list.size(); ++row) {
-            const int n = list.at(row);
+        std::sort(list.begin(), list.end(), [&](int a, int b) {
+            // World and system packages first, then by name.
+            const int ra = g.role(a) == PackageGraph::Dependency ? 1 : 0;
+            const int rb = g.role(b) == PackageGraph::Dependency ? 1 : 0;
+            return ra != rb ? ra < rb : pkgs.at(a).key() < pkgs.at(b).key();
+        });
+        const int subColumns = (list.size() + MaxRows - 1) / MaxRows;
+        const int rowsHere = std::min<int>(MaxRows, list.size());
+        const double top = (tallest - rowsHere) * RowHeight / 2.0;
+        for (int k = 0; k < list.size(); ++k) {
+            const int n = list.at(k);
             QVariantMap m = nodeMap(n);
             m.insert(QStringLiteral("id"), n);
             m.insert(QStringLiteral("label"), pkgs.at(n).name);
             m.insert(QStringLiteral("category"), pkgs.at(n).category);
             m.insert(QStringLiteral("layer"), it.key());
-            m.insert(QStringLiteral("x"), (it.key() - byColumn.firstKey()) * ColumnWidth);
-            m.insert(QStringLiteral("y"), top + row * RowHeight);
+            m.insert(QStringLiteral("x"), x + (k / MaxRows) * ColumnWidth);
+            m.insert(QStringLiteral("y"), top + (k % MaxRows) * RowHeight);
             m.insert(QStringLiteral("w"), NodeWidth);
             m.insert(QStringLiteral("center"), n == center);
             nodes.append(m);
         }
+        x += subColumns * ColumnWidth + LayerGap;
     }
     QVariantList edges;
     for (auto it = column.cbegin(); it != column.cend(); ++it) {
         for (int e : g.outEdges(it.key())) {
             const auto &edge = g.edges().at(e);
             if (!(edge.types & types) || !column.contains(edge.to)) continue;
-            // Only edges between adjacent or same columns keep the drawing legible.
-            if (std::abs(column.value(edge.to) - it.value()) > 1) continue;
+            // Only edges between adjacent layers keep the drawing legible.
+            if (std::abs(column.value(edge.to) - it.value()) != 1) continue;
             edges.append(QVariantMap{{QStringLiteral("from"), edge.from}, {QStringLiteral("to"), edge.to},
                                      {QStringLiteral("types"), PackageGraph::typesText(edge.types)}});
         }
@@ -423,6 +443,78 @@ QVariantList SystemModel::treemap(const QString &category, double width, double 
                                {QStringLiteral("y"), t.y}, {QStringLiteral("w"), t.w}, {QStringLiteral("h"), t.h}});
     }
     return out;
+}
+
+QVariantList SystemModel::searchPackages(const QString &query, int limit) const
+{
+    if (!m_snapshot || query.trimmed().size() < 2) return {};
+    QVariantList out;
+    for (const SearchHit &h : m_snapshot->index.search(query.trimmed(), limit)) {
+        const int i = indexOf(h.key);
+        out.append(QVariantMap{{QStringLiteral("key"), h.key}, {QStringLiteral("description"), h.description},
+                               {QStringLiteral("version"), h.bestVersion}, {QStringLiteral("installed"), i >= 0},
+                               {QStringLiteral("installedVersion"),
+                                i >= 0 ? m_snapshot->db.packages().at(i).versionText : QString()}});
+    }
+    // Installed packages from repositories that are gone still deserve a hit.
+    if (out.size() < limit) {
+        for (const QVariant &row : packageRows(query, QStringLiteral("all"), QString(), QStringLiteral("name"), false)) {
+            const QVariantMap m = row.toMap();
+            if (m_snapshot->index.find(m.value(QStringLiteral("key")).toString())) continue;
+            out.append(QVariantMap{{QStringLiteral("key"), m.value(QStringLiteral("key"))},
+                                   {QStringLiteral("description"), m.value(QStringLiteral("description"))},
+                                   {QStringLiteral("version"), m.value(QStringLiteral("version"))},
+                                   {QStringLiteral("installed"), true},
+                                   {QStringLiteral("installedVersion"), m.value(QStringLiteral("version"))}});
+            if (out.size() >= limit) break;
+        }
+    }
+    return out;
+}
+
+QVariantMap SystemModel::availableDetail(const QString &key) const
+{
+    if (!m_snapshot) return {};
+    const AvailablePackage *p = m_snapshot->index.find(key);
+    if (!p) return {};
+    const QStringList accept = m_snapshot->acceptKeywords();
+    const AvailableVersion *best = m_snapshot->index.bestVisibleVersion(key, accept, &m_snapshot->config);
+    QVariantList versions;
+    for (auto it = p->versions.crbegin(); it != p->versions.crend(); ++it) {
+        versions.append(QVariantMap{{QStringLiteral("version"), it->version}, {QStringLiteral("slot"), it->slot},
+                                    {QStringLiteral("repo"), it->repo},
+                                    {QStringLiteral("keywords"), it->keywords.join(QLatin1Char(' '))},
+                                    {QStringLiteral("masked"), it->masked},
+                                    {QStringLiteral("visible"), !it->masked && RepoIndex::keywordsAccepted(it->keywords, accept)}});
+    }
+    const int i = indexOf(key);
+    return {{QStringLiteral("key"), p->key}, {QStringLiteral("description"), p->description},
+            {QStringLiteral("homepage"), p->homepage}, {QStringLiteral("best"), best ? best->version : QString()},
+            {QStringLiteral("installedVersion"), i >= 0 ? m_snapshot->db.packages().at(i).versionText : QString()},
+            {QStringLiteral("versions"), versions}};
+}
+
+QVariantList SystemModel::recentMerges(int count) const
+{
+    if (!m_snapshot) return {};
+    QVariantList out;
+    for (const MergeRecord &r : m_snapshot->history.recent(count)) {
+        out.append(QVariantMap{{QStringLiteral("cpv"), r.cpv}, {QStringLiteral("key"), r.key},
+                               {QStringLiteral("when"), QDateTime::fromSecsSinceEpoch(r.start).toString(QStringLiteral("MM-dd HH:mm"))},
+                               {QStringLiteral("seconds"), r.seconds}, {QStringLiteral("ok"), r.ok},
+                               {QStringLiteral("binary"), r.binary}});
+    }
+    return out;
+}
+
+QString SystemModel::describeFlag(const QString &flag, const QString &key) const
+{
+    return m_snapshot ? m_snapshot->useDescriptions.describe(flag, key) : QString();
+}
+
+int SystemModel::buildEstimate(const QString &key) const
+{
+    return m_snapshot ? int(m_snapshot->history.estimateSeconds(key)) : -1;
 }
 
 } // namespace QindaPortage::App

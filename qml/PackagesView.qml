@@ -103,16 +103,18 @@ Item {
                         view.packageChosen(view.rows[currentIndex].key)
                 }
 
-                Tk.TableColumn { key: "name"; title: qsTr("Package"); flex: 2; minWidth: 160
-                    formatter: function (value, row) { return row.key } }
-                Tk.TableColumn { key: "version"; title: qsTr("Version"); width: 120; mono: true }
-                Tk.TableColumn { key: "repo"; title: qsTr("Repo"); width: 90; muted: true }
-                Tk.TableColumn { key: "role"; title: qsTr("Role"); width: 84; sortable: false
-                    formatter: function (value) { return Format.roleLabel(value) } }
-                Tk.TableColumn { key: "size"; title: qsTr("Size"); width: 80; align: Qt.AlignRight; mono: true; descendingFirst: true }
-                Tk.TableColumn { key: "rdeps"; title: qsTr("Needed by"); width: 76; align: Qt.AlignRight; mono: true; descendingFirst: true }
-                Tk.TableColumn { key: "installed"; title: qsTr("Installed"); width: 92; mono: true; muted: true; descendingFirst: true }
-                Tk.TableColumn { key: "description"; title: qsTr("Description"); flex: 3; muted: true; sortable: false }
+                columns: [
+                    Tk.TableColumn { key: "name"; title: qsTr("Package"); flex: 2; minWidth: 160
+                        formatter: function (value, row) { return row.key } },
+                    Tk.TableColumn { key: "version"; title: qsTr("Version"); width: 120; mono: true },
+                    Tk.TableColumn { key: "repo"; title: qsTr("Repo"); width: 90; muted: true },
+                    Tk.TableColumn { key: "role"; title: qsTr("Role"); width: 84; sortable: false
+                        formatter: function (value) { return Format.roleLabel(value) } },
+                    Tk.TableColumn { key: "size"; title: qsTr("Size"); width: 80; align: Qt.AlignRight; mono: true; descendingFirst: true },
+                    Tk.TableColumn { key: "rdeps"; title: qsTr("Needed by"); width: 76; align: Qt.AlignRight; mono: true; descendingFirst: true },
+                    Tk.TableColumn { key: "installed"; title: qsTr("Installed"); width: 92; mono: true; muted: true; descendingFirst: true },
+                    Tk.TableColumn { key: "description"; title: qsTr("Description"); flex: 3; muted: true; sortable: false }
+                ]
             }
         }
 

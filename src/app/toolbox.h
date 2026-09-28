@@ -24,6 +24,7 @@ class PretendRunner;
 namespace QindaPortage::App {
 
 class PlanModel;
+class SourcesModel;
 class SystemModel;
 
 class Toolbox final : public QObject
@@ -44,10 +45,14 @@ public:
     // Package keys whose name matches `name` exactly or closely (for
     // "didYouMean" answers).
     QStringList suggestKeys(const QString &atomOrName, int limit = 5) const;
+    // AgentSession answer check: what is missing from the draft plan.
+    QString planCheck() const;
 
     void registerCoreTools();
     // pretend, plan_*, build_log, web_fetch, search_bugs (toolbox_ops.cpp).
     void registerOpsTools(PlanModel *plan);
+    // probe_source (toolbox_ops.cpp).
+    void registerSourceTools(SourcesModel *sources);
 
 private:
     QJsonObject packageInfo(const QString &atom) const;

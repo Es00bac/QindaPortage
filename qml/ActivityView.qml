@@ -49,12 +49,14 @@ T.SplitView {
             emptyText: qsTr("No transactions yet. Applied plans appear here.")
             onActivated: function (index) { view.selected = index }
             onCurrentIndexChanged: if (currentIndex >= 0) view.selected = currentIndex
-            Tk.TableColumn { key: "started"; title: qsTr("When"); width: 150; mono: true; sortable: false
-                formatter: function (value) { return String(value || "").replace("T", " ").replace(/\..*$/, "").replace("Z", "") } }
-            Tk.TableColumn { key: "kind"; title: qsTr("Kind"); width: 60; sortable: false }
-            Tk.TableColumn { key: "ok"; title: qsTr("Result"); width: 64; sortable: false
-                formatter: function (value, row) { return row.reverted_by ? qsTr("reverted") : value ? qsTr("ok") : qsTr("failed") } }
-            Tk.TableColumn { key: "title"; title: qsTr("What"); flex: 1; sortable: false }
+            columns: [
+                Tk.TableColumn { key: "started"; title: qsTr("When"); width: 150; mono: true; sortable: false
+                    formatter: function (value) { return String(value || "").replace("T", " ").replace(/\..*$/, "").replace("Z", "") } },
+                Tk.TableColumn { key: "kind"; title: qsTr("Kind"); width: 60; sortable: false },
+                Tk.TableColumn { key: "ok"; title: qsTr("Result"); width: 64; sortable: false
+                    formatter: function (value, row) { return row.reverted_by ? qsTr("reverted") : value ? qsTr("ok") : qsTr("failed") } },
+                Tk.TableColumn { key: "title"; title: qsTr("What"); flex: 1; sortable: false }
+            ]
         }
     }
 

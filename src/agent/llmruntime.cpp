@@ -122,6 +122,13 @@ const LocalModel *LlmRuntime::chooseModel(qint64 availableBytes) const
     return m_models.isEmpty() ? nullptr : &m_models.last();
 }
 
+bool LlmRuntime::fitsNow() const
+{
+    const qint64 available = memAvailableBytes();
+    const LocalModel *m = chooseModel(available);
+    return m && m->sizeBytes + m->headroomBytes <= available;
+}
+
 QString LlmRuntime::stateName() const
 {
     switch (m_state) {

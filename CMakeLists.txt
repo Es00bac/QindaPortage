@@ -146,12 +146,13 @@ foreach(dependency IN ITEMS
 endforeach()
 cmake_path(GET QINDAQT_APP_SHELL_LIB PARENT_PATH QINDAQT_APP_SHELL_LIB_DIR)
 
-qt_add_executable(qindaportage
-    src/main.cpp
-    src/app/action_catalog.cpp
-    src/app/action_catalog.h
+# The app's models and the assistant's toolbox, without QML or AppShell,
+# so tools/qportage-ask can drive the assistant headless.
+add_library(qportage_app STATIC
     src/app/planmodel.cpp
     src/app/planmodel.h
+    src/app/sourcesmodel.cpp
+    src/app/sourcesmodel.h
     src/app/systemmodel.cpp
     src/app/systemmodel.h
     src/app/toolbox.cpp
@@ -159,6 +160,19 @@ qt_add_executable(qindaportage
     src/app/toolbox_ops.cpp
     src/app/treemap.cpp
     src/app/treemap.h
+)
+target_link_libraries(qportage_app PUBLIC qportage_agent qportage_sources qportage_ops qportage_core
+    Qt6::Gui Qt6::Network Qt6::Concurrent)
+target_compile_definitions(qportage_app PRIVATE QINDAPORTAGE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+# Developer tool: one request to the assistant, transcript on stdout.
+qt_add_executable(qportage-ask tools/qportage-ask.cpp)
+target_link_libraries(qportage-ask PRIVATE qportage_app)
+
+qt_add_executable(qindaportage
+    src/main.cpp
+    src/app/action_catalog.cpp
+    src/app/action_catalog.h
 )
 qt_add_qml_module(qindaportage
     URI QindaPortage
@@ -183,6 +197,7 @@ qt_add_qml_module(qindaportage
         qml/PackageInspector.qml
         qml/PackageJump.qml
         qml/PackagesView.qml
+        qml/SourcesView.qml
         qml/StatCard.qml
         qml/TranscriptEntry.qml
         qml/Treemap.qml
@@ -195,9 +210,7 @@ target_compile_definitions(qindaportage PRIVATE
 set_target_properties(qindaportage PROPERTIES INSTALL_RPATH "${QINDAQT_APP_SHELL_LIB_DIR}")
 # Static-archive order matters: dependents before dependencies.
 target_link_libraries(qindaportage PRIVATE
-    qportage_agent
-    qportage_ops
-    qportage_core
+    qportage_app
     Qt6::Quick
     Qt6::QuickControls2
     Qt6::Qml

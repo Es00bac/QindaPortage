@@ -18,6 +18,7 @@
 #include "agent/llmruntime.h"
 #include "app/action_catalog.h"
 #include "app/planmodel.h"
+#include "app/sourcesmodel.h"
 #include "app/systemmodel.h"
 #include "app/toolbox.h"
 
@@ -88,10 +89,13 @@ int main(int argc, char **argv)
     App::PlanModel planModel;
     App::Toolbox toolbox(&systemModel);
     toolbox.registerOpsTools(&planModel);
+    App::SourcesModel sourcesModel(&systemModel, &planModel);
+    toolbox.registerSourceTools(&sourcesModel);
     Agent::AgentSession assistant(&llm, toolbox.registry());
     assistant.setRemoteEndpoints(remoteEndpoints());
     assistant.setSystemContextProvider([&toolbox] { return toolbox.systemProfile(); });
     assistant.setRequestHintProvider([&toolbox](const QString &text) { return toolbox.requestHints(text); });
+    assistant.setAnswerCheck([&toolbox] { return toolbox.planCheck(); });
     Agent::CloudEscalation escalation;
     // AGENT-CONTRACT: the model must not hold its memory while the helper
     // builds (docs/design.md "Model lifecycle"); Executor emits this
@@ -115,6 +119,7 @@ int main(int argc, char **argv)
     context->setContextProperty(QStringLiteral("systemModel"), &systemModel);
     context->setContextProperty(QStringLiteral("planModel"), &planModel);
     context->setContextProperty(QStringLiteral("toolbox"), &toolbox);
+    context->setContextProperty(QStringLiteral("sourcesModel"), &sourcesModel);
     context->setContextProperty(QStringLiteral("llm"), &llm);
     context->setContextProperty(QStringLiteral("assistant"), &assistant);
     context->setContextProperty(QStringLiteral("escalation"), &escalation);

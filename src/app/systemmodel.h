@@ -8,8 +8,11 @@
 
 #pragma once
 
+#include "core/buildhistory.h"
 #include "core/packagegraph.h"
 #include "core/portageconfig.h"
+#include "core/repoindex.h"
+#include "core/usedescriptions.h"
 #include "core/vardb.h"
 
 #include <QFutureWatcher>
@@ -26,7 +29,14 @@ struct SystemSnapshot
     Core::VarDb db;
     Core::PortageConfig config;
     Core::PackageGraph graph;
+    Core::RepoIndex index;
+    Core::UseDescriptions useDescriptions;
+    Core::BuildHistory history;
     qint64 loadMs = 0;
+
+    // ACCEPT_KEYWORDS as a list (portageq value, "amd64" when unknown).
+    QStringList acceptKeywords() const;
+    bool isInstalled(const QString &key) const { return !db.byKey(key).isEmpty(); }
 };
 
 class SystemModel final : public QObject
@@ -75,6 +85,16 @@ public:
     // inside `category`): {id, label, bytes, count, x, y, w, h}.
     Q_INVOKABLE QVariantList treemap(const QString &category, double width, double height) const;
     Q_INVOKABLE QString formatBytes(double bytes) const;
+    // Installed and available packages matching `query`:
+    // {key, description, version (best visible), installed, installedVersion}.
+    Q_INVOKABLE QVariantList searchPackages(const QString &query, int limit) const;
+    // An available package: {key, description, homepage, best, installedVersion,
+    // versions: [{version, slot, repo, keywords, masked, visible}]}.
+    Q_INVOKABLE QVariantMap availableDetail(const QString &key) const;
+    // Recent merges from emerge.log: {cpv, when, seconds, ok, binary}.
+    Q_INVOKABLE QVariantList recentMerges(int count) const;
+    Q_INVOKABLE QString describeFlag(const QString &flag, const QString &key) const;
+    Q_INVOKABLE int buildEstimate(const QString &key) const;
 
 public Q_SLOTS:
     void reload();
@@ -90,8 +110,6 @@ private:
 
     std::unique_ptr<SystemSnapshot> m_snapshot;
     QFutureWatcher<SystemSnapshot *> m_watcher;
-    QFutureWatcher<QMap<QString, QString>> m_envWatcher;
-    QMap<QString, QString> m_env;
     bool m_loading = false;
     int m_revision = 0;
 };

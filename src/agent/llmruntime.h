@@ -57,6 +57,9 @@ public:
 
     // The model load() would pick right now, or nullptr if none fits.
     const LocalModel *chooseModel(qint64 availableBytes) const;
+    // True when the model load() would pick fits in the memory available
+    // now (weights + headroom); false means loading would push into swap.
+    bool fitsNow() const;
     static qint64 memAvailableBytes();
 
     State state() const { return m_state; }

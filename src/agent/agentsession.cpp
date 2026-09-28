@@ -24,6 +24,7 @@ Rules:
 - "+flag" enables a flag, "-flag" disables it.
 - Before proposing any change, run pretend with the change applied and read its problems and fixes. Repeat until "resolved" is true.
 - Changes only go into the draft plan through plan_* tools; nothing is installed until the user approves the plan. Give every plan step a one-line rationale a human would accept.
+- A plan that installs, rebuilds or removes something must contain the plan_emerge / plan_remove step that does it, not only the configuration changes.
 - Prefer, in order: a binary package or the stable version; a USE change on the specific package; an accept_keywords entry for the specific version; a patch; a fixed ebuild in the qinda-local overlay. Never change global USE or ACCEPT_KEYWORDS.
 - Software that is not in any repository is packaged with probe_source then plan_ebuild in the qinda-local overlay, so Portage tracks it. Never suggest pip, npm -g, curl|sh or make install.
 - If something is incompatible, do not refuse: find why (build_log, web_fetch of bug reports, upstream patches) and make it work with a patch or a fixed ebuild.
@@ -168,6 +169,7 @@ void AgentSession::send(const QString &text)
     m_messages.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("content"), content}});
     addEntry({{QStringLiteral("kind"), QStringLiteral("user")}, {QStringLiteral("text"), trimmed}});
     m_escalationSuggested = false;
+    m_answerChecked = false;
     m_recentCalls.clear();
     m_iterations = 0;
     startTurn();
@@ -192,6 +194,18 @@ void AgentSession::inject(const QString &text, bool runTurn)
 void AgentSession::startTurn()
 {
     setBusy(true);
+    // AGENT-NOTE: loading a model that does not fit pushes the laptop into
+    // swap while the user is working; when qinda's tier is configured, use
+    // it instead and say so (docs/design.md "Model choice").
+    if (m_endpointIndex == 0 && m_runtime && m_runtime->state() != LlmRuntime::State::Ready
+        && !m_runtime->fitsNow() && m_endpoints.size() > 1) {
+        m_endpointIndex = 1;
+        Q_EMIT endpointChanged();
+        addEntry({{QStringLiteral("kind"), QStringLiteral("note")},
+                  {QStringLiteral("text"), QStringLiteral("Only %1 GiB of memory is free, too little for a local model "
+                                                          "without swapping; using %2 instead.")
+                                               .arg(m_runtime->availableGiB(), 0, 'f', 1).arg(currentEndpoint().label)}});
+    }
     if (m_endpointIndex == 0 && m_runtime && m_runtime->state() != LlmRuntime::State::Ready) {
         setStatus(QStringLiteral("loading the local model…"));
         m_waitingForModel = true;
@@ -228,6 +242,17 @@ void AgentSession::onFinished(const QJsonObject &message, const QVector<ToolCall
     if (!text.isEmpty()) {
         addEntry({{QStringLiteral("kind"), QStringLiteral("assistant")}, {QStringLiteral("text"), text},
                   {QStringLiteral("tokensPerSecond"), timings.value(QStringLiteral("predicted_per_second")).toDouble()}});
+    }
+    if (calls.isEmpty() && m_answerCheck && !m_answerChecked) {
+        const QString problem = m_answerCheck();
+        if (!problem.isEmpty()) {
+            m_answerChecked = true;
+            m_messages.append(QJsonObject{{QStringLiteral("role"), QStringLiteral("user")},
+                                          {QStringLiteral("content"), QStringLiteral("[System check]\n") + problem}});
+            addEntry({{QStringLiteral("kind"), QStringLiteral("note")}, {QStringLiteral("text"), problem}});
+            requestCompletion();
+            return;
+        }
     }
     if (calls.isEmpty()) {
         setStatus(QString());

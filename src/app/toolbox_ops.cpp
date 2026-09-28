@@ -4,6 +4,8 @@
 // builders, build logs, and the web (Gentoo bugzilla, upstream pages).
 
 #include "app/planmodel.h"
+#include "app/sourcesmodel.h"
+#include "app/systemmodel.h"
 #include "app/toolbox.h"
 #include "core/buildlog.h"
 #include "ops/plan.h"
@@ -142,6 +144,19 @@ void Toolbox::runPretend(const QJsonObject &args, const ToolDone &done)
             return;
         }
         QJsonObject result = m_pretend->result().toJson(40);
+        // Build-time estimate for the source builds, from emerge.log history.
+        if (const SystemSnapshot *snap = m_system->snapshot()) {
+            qint64 seconds = 0;
+            int unknown = 0;
+            for (const Core::MergeItem &it : m_pretend->result().merges()) {
+                if (it.binary || it.action == Core::MergeItem::Uninstall) continue;
+                const qint64 est = snap->history.estimateSeconds(it.key);
+                if (est < 0) ++unknown;
+                else seconds += est;
+            }
+            result[QStringLiteral("estimatedBuildMinutes")] = int((seconds + 59) / 60);
+            if (unknown > 0) result[QStringLiteral("sourceBuildsWithoutHistory")] = unknown;
+        }
         if (m_pretend->result().items.isEmpty() && m_pretend->result().problems.isEmpty()) {
             // Unknown output shape: give the model the raw tail.
             result[QStringLiteral("raw")] = m_pretend->rawOutput().right(2500);
@@ -152,6 +167,27 @@ void Toolbox::runPretend(const QJsonObject &args, const ToolDone &done)
         m_pretend->disconnect(this);
         done(error(m_pretend->error()));
     }
+}
+
+QString Toolbox::planCheck() const
+{
+    if (!m_plan || m_plan->stepCount() == 0) return {};
+    bool config = false, build = false;
+    for (const PlanStep &s : m_plan->plan().steps) {
+        if (s.isBuild()) build = true;
+        else if (s.kind != PlanStep::WriteEbuild) config = true;
+    }
+    if (m_plan->plan().writesEbuilds() && !build) {
+        return QStringLiteral("The draft plan writes an ebuild but never installs it. Add plan_emerge for the new package "
+                              "(=cat/pn-version::qinda-local), run pretend, then answer.");
+    }
+    if (config && !build) {
+        return QStringLiteral("The draft plan only changes configuration; nothing installs or rebuilds the packages it is for. "
+                              "Add the plan_emerge step (e.g. the requested atoms, or --oneshot for packages that only need a "
+                              "rebuild), run pretend, then answer. If configuration alone is really what the user asked for, "
+                              "say so and answer without changes.");
+    }
+    return {};
 }
 
 QJsonObject Toolbox::planStep(const QJsonObject &json)
@@ -303,6 +339,34 @@ void Toolbox::registerOpsTools(PlanModel *plan)
                             if (!o.contains(QStringLiteral("bugs"))) { done(error(typeOrError.isEmpty() ? QStringLiteral("no answer") : typeOrError)); return; }
                             done({{QStringLiteral("bugs"), o.value(QStringLiteral("bugs"))}});
                         });
+                    }});
+}
+
+void Toolbox::registerSourceTools(SourcesModel *sources)
+{
+    using R = ToolRegistry;
+    m_registry.add({QStringLiteral("probe_source"),
+                    QStringLiteral("Inspect software that is not in any repository (GitHub/GitLab/Codeberg URL, tarball URL or local directory): version, license, build system, declared dependencies mapped to Gentoo atoms, and a draft ebuild for the qinda-local overlay. Review the draft, fix what is marked, then plan_ebuild + plan_emerge and pretend."),
+                    R::object({{QStringLiteral("url"), R::string(QStringLiteral("repository, tarball or directory"))}}, {QStringLiteral("url")}),
+                    [sources](const QJsonObject &a, const ToolDone &done) {
+                        auto *connection = new QMetaObject::Connection;
+                        *connection = QObject::connect(sources, &SourcesModel::probed, sources, [sources, done, connection](bool ok) {
+                            QObject::disconnect(*connection);
+                            delete connection;
+                            if (!ok) {
+                                done(error(sources->error()));
+                                return;
+                            }
+                            QJsonObject o = sources->sourceInfo().toJson(false);
+                            o[QStringLiteral("dependencyAtoms")] = Ops::DependencyHints::toJson(sources->resolutions());
+                            o[QStringLiteral("ebuildPath")] = sources->ebuildPath();
+                            o[QStringLiteral("draftEbuild")] = sources->draft();
+                            o[QStringLiteral("next")] = QStringLiteral(
+                                "fix TODOs and unresolved dependencies (find_packages), then plan_ebuild with ebuildPath "
+                                "and the final text, plan_emerge =cat/pn-version::qinda-local, and pretend");
+                            done(o);
+                        });
+                        sources->probe(a.value(QStringLiteral("url")).toString());
                     }});
 }
 

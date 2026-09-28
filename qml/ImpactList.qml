@@ -76,14 +76,16 @@ Tk.Flex {
         emptyText: list.previewed ? qsTr("Nothing would be merged.") : qsTr("Run Preview to see the impact.")
         onActivated: function (index) { list.packageChosen(list.merges[index].key) }
 
-        Tk.TableColumn { key: "action"; title: qsTr("Action"); width: 86; sortable: false }
-        Tk.TableColumn { key: "key"; title: qsTr("Package"); flex: 2; minWidth: 160; sortable: false }
-        Tk.TableColumn { key: "version"; title: qsTr("Version"); width: 120; mono: true; sortable: false }
-        Tk.TableColumn { key: "from"; title: qsTr("From"); width: 110; mono: true; muted: true; sortable: false }
-        Tk.TableColumn { key: "binary"; title: qsTr("Build"); width: 64; sortable: false
-            formatter: function (value) { return value ? qsTr("binary") : qsTr("source") } }
-        Tk.TableColumn { key: "useChanges"; title: qsTr("USE changes"); flex: 1; mono: true; sortable: false }
-        Tk.TableColumn { key: "repo"; title: qsTr("Repo"); width: 90; muted: true; sortable: false }
-        Tk.TableColumn { key: "download"; title: qsTr("Download"); width: 90; align: Qt.AlignRight; mono: true; sortable: false }
+        columns: [
+            Tk.TableColumn { key: "action"; title: qsTr("Action"); width: 86; sortable: false },
+            Tk.TableColumn { key: "key"; title: qsTr("Package"); flex: 2; minWidth: 160; sortable: false },
+            Tk.TableColumn { key: "version"; title: qsTr("Version"); width: 120; mono: true; sortable: false },
+            Tk.TableColumn { key: "from"; title: qsTr("From"); width: 110; mono: true; muted: true; sortable: false },
+            Tk.TableColumn { key: "binary"; title: qsTr("Build"); width: 64; sortable: false
+                formatter: function (value) { return value ? qsTr("binary") : qsTr("source") } },
+            Tk.TableColumn { key: "useChanges"; title: qsTr("USE changes"); flex: 1; mono: true; sortable: false },
+            Tk.TableColumn { key: "repo"; title: qsTr("Repo"); width: 90; muted: true; sortable: false },
+            Tk.TableColumn { key: "download"; title: qsTr("Download"); width: 90; align: Qt.AlignRight; mono: true; sortable: false }
+        ]
     }
 }

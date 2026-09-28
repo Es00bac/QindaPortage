@@ -41,6 +41,10 @@ public:
     void setRemoteEndpoints(const QVector<Endpoint> &endpoints);
     // Supplies the compact system profile embedded in the system prompt.
     void setSystemContextProvider(std::function<QString()> provider) { m_contextProvider = std::move(provider); }
+    // Checked when the model answers without tool calls: a non-empty result
+    // is sent back as a system report for one more turn (once per request),
+    // e.g. "the plan changes USE but installs nothing".
+    void setAnswerCheck(std::function<QString()> check) { m_answerCheck = std::move(check); }
     // Supplies deterministic hints for a request (package names resolved in
     // code from the user's words) so the model does not have to guess them.
     void setRequestHintProvider(std::function<QString(const QString &)> provider)
@@ -109,6 +113,8 @@ private:
     QStringList m_recentCalls;  // "name args" for loop detection
     std::function<QString()> m_contextProvider;
     std::function<QString(const QString &)> m_hintProvider;
+    std::function<QString()> m_answerCheck;
+    bool m_answerChecked = false;
     int m_iterations = 0;
     int m_generation = 0;       // bumps on stop/reset so late callbacks are ignored
     bool m_busy = false;
