@@ -1,0 +1,1 @@
+dev-libs/lib:0= gui? ( x11/toolkit ) ssl? ( dev-libs/openssl )
