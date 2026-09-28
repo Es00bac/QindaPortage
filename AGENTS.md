@@ -38,3 +38,9 @@ build/qportage-dump pkg app-misc/jq  # one package: USE origins, deps, why
 
 Visual work: `qtk-preview preview/<X>Preview.qml --grab out.png` and look
 at the PNG before calling it done.
+
+Testing the ebuild as the user (`ebuild … test install` with a scratch
+PORTAGE_TMPDIR) must also set `DISTDIR` to a scratch directory: git-r3
+otherwise clones into `/var/cache/distfiles/git3-src/` owned by the user, and
+the next real `emerge` (running as `portage`) fails with "Permission denied"
+on FETCH_HEAD. It happened once (2026-09-28).
