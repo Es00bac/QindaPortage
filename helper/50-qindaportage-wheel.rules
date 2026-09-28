@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Installed only with USE=wheel-nopasswd (app-portage/qindaportage).
+//
+// Lets a local, active member of wheel run the QindaPortage helper
+// (org.qindaqt.portage.apply) without a password prompt, so the assistant
+// can apply verified plans on its own. It grants nothing beyond a
+// passwordless-sudo wheel setup: the helper still validates every step,
+// writes only its managed files, snapshots and journals.
+polkit.addRule(function (action, subject) {
+    if (action.id == "org.qindaqt.portage.apply" && subject.local && subject.active
+        && subject.isInGroup("wheel")) {
+        return polkit.Result.YES;
+    }
+});

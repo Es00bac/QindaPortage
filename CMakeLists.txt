@@ -91,6 +91,10 @@ install(PROGRAMS helper/qindaportage-apply
         DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/qindaportage)
 install(FILES helper/qportage_state.py helper/qportage_validate.py
         DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/qindaportage)
+option(QINDAPORTAGE_POLKIT_WHEEL_NOPASSWD "Let wheel apply plans without a polkit password prompt" OFF)
+if(QINDAPORTAGE_POLKIT_WHEEL_NOPASSWD)
+    install(FILES helper/50-qindaportage-wheel.rules DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/rules.d)
+endif()
 install(FILES helper/org.qindaqt.portage.policy
         DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
 # --- end ops ---
@@ -157,6 +161,7 @@ add_library(qportage_app STATIC
     src/app/systemmodel.h
     src/app/toolbox.cpp
     src/app/toolbox.h
+    src/app/toolbox_actions.cpp
     src/app/toolbox_ops.cpp
     src/app/treemap.cpp
     src/app/treemap.h

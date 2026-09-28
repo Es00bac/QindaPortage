@@ -16,7 +16,11 @@
 #include <QVariantList>
 #include <QVariantMap>
 
+#include <functional>
+
 namespace QindaPortage::App {
+
+class SystemModel;
 
 class PlanModel final : public QObject
 {
@@ -35,9 +39,29 @@ class PlanModel final : public QObject
     Q_PROPERTY(QStringList applyLog READ applyLog NOTIFY applyLogChanged)
     Q_PROPERTY(QVariantList journal READ journal NOTIFY journalChanged)
     Q_PROPERTY(QStringList undoCommands READ undoCommands NOTIFY applyStateChanged)
+    // May the assistant apply plans itself (apply_plan)? Persisted; on by
+    // default. High-risk plans need the user regardless (riskReasons).
+    Q_PROPERTY(bool autonomous READ autonomous WRITE setAutonomous NOTIFY autonomyChanged)
+    Q_PROPERTY(QStringList riskReasons READ riskReasons NOTIFY previewChanged)
 
 public:
     explicit PlanModel(QObject *parent = nullptr);
+    void setSystem(const SystemModel *system) { m_system = system; }
+
+    using ApplyDone = std::function<void(bool ok, const QString &txn, const QString &error, const QString &logTail)>;
+    // Previews again when the plan changed since the last preview, refuses
+    // when the preview does not resolve, then applies. `done` is called once
+    // (possibly before this returns, when refused).
+    // `gate`, when given, runs once the preview is current and resolved; a
+    // non-empty answer refuses the apply with that reason.
+    void applyVerified(const ApplyDone &done, const std::function<QString()> &gate = {});
+    bool autonomous() const { return m_autonomous; }
+    void setAutonomous(bool on);
+    // Why this plan needs the user's explicit approval: changes the rules in
+    // docs/design.md "Safety rules" put beyond the assistant (system package
+    // removal, toolchain downgrades, unmasking, live ebuilds, very large
+    // merges). Empty when the assistant may apply it itself.
+    QStringList riskReasons() const;
 
     const Ops::Plan &plan() const { return m_plan; }
     Ops::Executor *executor() { return &m_executor; }
@@ -85,10 +109,21 @@ Q_SIGNALS:
     void journalChanged();
     // After an apply: ok, transaction id, error, and the last log lines.
     void applyFinished(bool ok, const QString &txn, const QString &error, const QString &logTail);
+    void autonomyChanged();
 
 private:
     void touch();
 
+    void finishPendingApply(bool ok, const QString &txn, const QString &error, const QString &tail);
+
+    const SystemModel *m_system = nullptr;
+    void applyIfAllowed();
+
+    ApplyDone m_pendingApply;   // waiting for a preview, then for the helper
+    std::function<QString()> m_applyGate;
+    bool m_applyAfterPreview = false;
+    bool m_autonomous = true;
+    Core::EmergePlan m_lastResult;
     Ops::Plan m_plan;
     Ops::PretendRunner m_runner;
     Ops::Executor m_executor;

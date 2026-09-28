@@ -94,6 +94,8 @@ int main(int argc, char **argv)
     App::PlanModel planModel;
     App::Toolbox toolbox(&systemModel);
     toolbox.registerOpsTools(&planModel);
+    toolbox.registerActionTools();
+    planModel.setSystem(&systemModel);
     App::SourcesModel sourcesModel(&systemModel, &planModel);
     toolbox.registerSourceTools(&sourcesModel);
     Agent::AgentSession assistant(&llm, toolbox.registry());

@@ -23,13 +23,16 @@ Rules:
 - Never guess a package name, version or USE flag. Use find_packages / package_info first. Tool errors include "didYouMean": use it.
 - "+flag" enables a flag, "-flag" disables it.
 - Before proposing any change, run pretend with the change applied and read its problems and fixes. Repeat until "resolved" is true.
-- Changes only go into the draft plan through plan_* tools; nothing is installed until the user approves the plan. Give every plan step a one-line rationale a human would accept.
+- Changes go into the draft plan through plan_* tools and are carried out only by apply_plan, which re-checks the plan, snapshots the configuration and journals the transaction (revert_transaction undoes configuration). Give every plan step a one-line rationale a human would accept.
 - A plan that installs, rebuilds or removes something must contain the plan_emerge / plan_remove step that does it, not only the configuration changes.
 - Prefer, in order: a binary package or the stable version; a USE change on the specific package; an accept_keywords entry for the specific version; a patch; a fixed ebuild in the qinda-local overlay. Never change global USE or ACCEPT_KEYWORDS.
 - Software that is not in any repository is packaged with probe_source then plan_ebuild in the qinda-local overlay, so Portage tracks it. Never suggest pip, npm -g, curl|sh or make install.
 - If something is incompatible, do not refuse: find why (build_log, web_fetch of bug reports, upstream patches) and make it work with a patch or a fixed ebuild.
 - If you are stuck after a few attempts, say so plainly and suggest escalating.
-- Answer briefly: what the plan does and why. You cannot apply it yourself; end by telling the user to say "apply" (or press Apply) to run it. When the user asks for something new, extend or replace the plan instead.)";
+- When the user asks for a change and pretend resolves, carry it out with apply_plan; do not stop at a plan. If apply_plan says the user must approve (risky change, or acting on their behalf is off), explain why and tell them to say "apply" or press Apply.
+- After applying, report what changed. If the build failed, read build_log, fix the cause (USE, keyword, patch, ebuild), pretend, and apply again; give up after three attempts and say so.
+- Before a world update read_news, and mention any news item that affects the update.
+- Answer briefly.)";
 
 QString shortJson(const QJsonObject &o, int max)
 {
@@ -219,6 +222,14 @@ void AgentSession::startTurn()
 
 void AgentSession::requestCompletion()
 {
+    // AGENT-NOTE: apply_plan unloads the local model while the helper builds
+    // (the compiler gets the memory); load it again to read the result.
+    if (m_endpointIndex == 0 && m_runtime && m_runtime->state() != LlmRuntime::State::Ready) {
+        setStatus(QStringLiteral("loading the local model…"));
+        m_waitingForModel = true;
+        m_runtime->ensureLoaded();
+        return;
+    }
     compactHistory();
     Endpoint endpoint = currentEndpoint();
     if (m_endpointIndex == 0 && m_runtime) {

@@ -47,12 +47,16 @@ public:
     QStringList suggestKeys(const QString &atomOrName, int limit = 5) const;
     // AgentSession answer check: what is missing from the draft plan.
     QString planCheck() const;
+    Q_INVOKABLE bool agentApplying() const { return m_agentApplying; }
 
     void registerCoreTools();
     // pretend, plan_*, build_log, web_fetch, search_bugs (toolbox_ops.cpp).
     void registerOpsTools(PlanModel *plan);
     // probe_source (toolbox_ops.cpp).
     void registerSourceTools(SourcesModel *sources);
+    // apply_plan, revert_transaction, list_transactions, read_news
+    // (toolbox_actions.cpp): the tools that change the system.
+    void registerActionTools();
 
 private:
     QJsonObject packageInfo(const QString &atom) const;
@@ -68,6 +72,7 @@ private:
 
     SystemModel *m_system;
     PlanModel *m_plan = nullptr;
+    bool m_agentApplying = false; // the running transaction came from apply_plan
     Ops::PretendRunner *m_pretend = nullptr;
     QNetworkAccessManager *m_net = nullptr;
     Agent::ToolRegistry m_registry;

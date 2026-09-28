@@ -113,6 +113,16 @@ Tk.Box {
                     elide: Text.ElideRight
                 }
                 Tk.Switch {
+                    objectName: "actSwitch"
+                    small: true
+                    text: qsTr("act")
+                    checked: dock.plan ? dock.plan.autonomous : false
+                    tooltip: qsTr("Act on my behalf: the assistant applies verified plans itself. Risky changes "
+                                  + "(removing system packages, toolchain downgrades, unmasking, live ebuilds, huge merges) "
+                                  + "still wait for you. Off: it only plans and you apply.")
+                    onToggled: dock.plan.autonomous = checked
+                }
+                Tk.Switch {
                     small: true
                     text: qsTr("think")
                     checked: dock.session.thinking

@@ -2,9 +2,11 @@
 //
 // qportage-ask: sends one request to the QindaPortage assistant with the
 // real tools and prints the transcript and the resulting draft plan. A
-// development and verification seam, not installed. Nothing is applied.
+// development and verification seam, not installed.
 //
-//   qportage-ask [--tier local|qinda] "install jq with static libraries"
+//   qportage-ask [--tier local|qinda] [--apply] "install jq with static libraries"
+//
+// Without --apply nothing is changed (acting on the user's behalf is off).
 
 #include "agent/agentsession.h"
 #include "agent/llmruntime.h"
@@ -26,9 +28,19 @@ int main(int argc, char **argv)
     QGuiApplication app(argc, argv);
     QStringList args = app.arguments().mid(1);
     QString tier = QStringLiteral("local");
-    if (args.size() >= 2 && args.first() == QLatin1String("--tier")) {
-        tier = args.at(1);
-        args = args.mid(2);
+    bool allowApply = false;
+    while (!args.isEmpty() && args.first().startsWith(QLatin1String("--"))) {
+        if (args.first() == QLatin1String("--tier") && args.size() >= 2) {
+            tier = args.at(1);
+            args = args.mid(2);
+        } else if (args.first() == QLatin1String("--apply")) {
+            // AGENT-GUARD: without --apply the harness never changes the
+            // system: apply_plan answers "the user must approve".
+            allowApply = true;
+            args = args.mid(1);
+        } else {
+            break;
+        }
     }
     const QString request = args.join(QLatin1Char(' '));
     QTextStream out(stdout);
@@ -38,6 +50,9 @@ int main(int argc, char **argv)
     App::PlanModel plan;
     App::Toolbox toolbox(&system);
     toolbox.registerOpsTools(&plan);
+    toolbox.registerActionTools();
+    plan.setSystem(&system);
+    plan.setAutonomous(allowApply);
     App::SourcesModel sources(&system, &plan);
     toolbox.registerSourceTools(&sources);
     Agent::AgentSession session(&llm, toolbox.registry());

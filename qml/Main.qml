@@ -71,12 +71,22 @@ Tk.AppWindow {
     function applyPlan() {
         if (planModel.stepCount === 0 || planModel.applying) return
         if (planModel.previewCurrent && !planModel.previewing) {
-            startApply()
+            confirmOrApply()
             return
         }
         window.applyWhenPreviewed = true
         assistant.inject(qsTr("The user approved the plan. Previewing it once more, then applying."), false)
         if (!planModel.previewing) planModel.runPreview()
+    }
+    // The user approved; high-risk plans still get one explicit confirmation
+    // that names the risks (the same list that stops the assistant).
+    function confirmOrApply() {
+        window.applyWhenPreviewed = false
+        if (planModel.riskReasons.length > 0) {
+            riskDialog.open()
+            return
+        }
+        startApply()
     }
     function startApply() {
         window.applyWhenPreviewed = false
@@ -118,7 +128,7 @@ Tk.AppWindow {
         function onPreviewChanged() {
             if (!window.applyWhenPreviewed || planModel.previewing || !planModel.previewCurrent) return
             if (planModel.preview.resolved) {
-                window.startApply()
+                window.confirmOrApply()
             } else {
                 window.applyWhenPreviewed = false
                 window.page = "changes"
@@ -129,6 +139,9 @@ Tk.AppWindow {
         function onApplyFinished(ok, txn, error, logTail) {
             systemModel.reload()
             window.showNote(ok ? qsTr("Transaction %1 applied").arg(txn) : qsTr("Transaction %1 failed").arg(txn))
+            // apply_plan reports to the assistant itself; only user-started
+            // transactions are narrated here.
+            if (toolbox.agentApplying()) return
             if (ok) assistant.inject(qsTr("Applied as transaction %1. It can be reverted from Activity.").arg(txn), false)
             if (!ok) {
                 // The model was unloaded for the build; asking reloads it.
@@ -361,6 +374,19 @@ Tk.AppWindow {
         text: qsTr("Model: %1. Idle unload after %2 s.").arg(llm.modelLabel.length > 0 ? llm.modelLabel : qsTr("chosen at load time"))
               .arg(llm.idleSeconds)
         primaryText: qsTr("Close")
+    }
+
+    Tk.MessageDialog {
+        id: riskDialog
+        objectName: "riskDialog"
+        title: qsTr("This plan needs your explicit OK")
+        variant: "warning"
+        text: qsTr("The assistant never applies these on its own:\n• %1\n\nThe configuration is snapshotted first and can be "
+                   + "reverted from Activity; package changes cannot be undone automatically.")
+              .arg(planModel.riskReasons.join("\n• "))
+        primaryText: qsTr("Apply anyway")
+        secondaryText: qsTr("Cancel")
+        onAccepted: window.startApply()
     }
 
     Tk.MessageDialog {
