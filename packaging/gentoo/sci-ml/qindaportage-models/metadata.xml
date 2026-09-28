@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE pkgmetadata SYSTEM "https://www.gentoo.org/dtd/metadata.dtd">
+<pkgmetadata>
+	<maintainer type="person">
+		<email>qindaqt@example.invalid</email>
+		<name>QindaQt contributors</name>
+	</maintainer>
+	<use>
+		<flag name="qwen3-5-9b">Qwen3.5-9B UD-Q4_K_XL (6.0 GB), the stronger tool-calling planner</flag>
+	</use>
+</pkgmetadata>
