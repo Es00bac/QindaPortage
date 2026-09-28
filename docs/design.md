@@ -218,10 +218,16 @@ trusts nothing the GUI sends:
 - It streams JSON-lines progress (`step`, `log`, `result`) that the GUI shows
   in a terminal view, and journals the transaction in
   `/var/lib/qindaportage/journal/`.
-- **revert <txn>** restores the snapshot's configuration. Packages built by
-  the transaction are listed with the re-emerge or unmerge command that
-  undoes them. Binary packages from `FEATURES=buildpkg` or the qinda binhost
-  make that fast.
+- **revert <txn>** restores the files the transaction touched, and only
+  those still exactly as it left them; later edits are reported, not
+  overwritten. Packages built by the transaction are listed with the
+  re-emerge or depclean command that undoes them. Binary packages from
+  `FEATURES=buildpkg` or the qinda binhost make that fast.
+- A `remove` step is a safe removal (`--deselect`, then `--depclean` of
+  those atoms). It fails instead of breaking a dependent package.
+
+The helper's full protocol, file placement and journal format are in
+`docs/helper.md`.
 
 ### External software (Sources)
 

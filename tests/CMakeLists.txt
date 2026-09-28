@@ -10,3 +10,21 @@ foreach(test IN ITEMS tst_version tst_atom tst_depspec tst_shellvars tst_graph t
     add_test(NAME ${test} COMMAND ${test})
     set_tests_properties(${test} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endforeach()
+
+# --- ops ---
+# Fake emerge/ebuild/helper scripts stand in for the real programs.
+foreach(test IN ITEMS tst_plan tst_pretendrunner tst_executor)
+    qt_add_executable(${test} cpp/${test}.cpp)
+    target_link_libraries(${test} PRIVATE qportage_ops Qt6::Test)
+    target_compile_definitions(${test} PRIVATE TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+    add_test(NAME ${test} COMMAND ${test})
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endforeach()
+
+# The root helper against a fake root (never the live system).
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME helper_apply
+             COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${CMAKE_SOURCE_DIR}/helper/tests)
+endif()
+# --- end ops ---

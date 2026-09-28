@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>QindaQt</vendor>
+  <vendor_url>https://github.com/Es00bac</vendor_url>
+  <action id="org.qindaqt.portage.apply">
+    <description>Apply an approved QindaPortage plan</description>
+    <message>Authentication is required to change installed software and Portage configuration</message>
+    <icon_name>package-x-generic</icon_name>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/qindaportage/qindaportage-apply</annotate>
+  </action>
+</policyconfig>
