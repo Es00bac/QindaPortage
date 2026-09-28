@@ -15,7 +15,4 @@
 		applies approved plans through a polkit-authorised helper that
 		snapshots /etc/portage first. The model unloads itself before builds.
 	</longdescription>
-	<use>
-		<flag name="qwen3-5-9b">Install the Qwen3.5-9B planner model (sci-ml/qindaportage-models); used when enough memory is free, else Qwen3.5-4B</flag>
-	</use>
 </pkgmetadata>

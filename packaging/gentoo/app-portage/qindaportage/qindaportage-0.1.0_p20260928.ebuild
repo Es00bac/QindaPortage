@@ -23,14 +23,16 @@ EGIT_COMMIT="7a353cd14a2953b5ae5e2ea03a01462247e4899e"
 LICENSE="GPL-3+"
 SLOT="0"
 KEYWORDS="~amd64"
-IUSE="qwen3-5-9b test"
+IUSE="test"
 REQUIRED_USE="${PYTHON_REQUIRED_USE}"
 RESTRICT="!test? ( test )"
 
 # gui-wm/qindaqt-desktop owns the AppShell and global-menu archives this app
 # links (find_library in CMakeLists.txt); dev-libs/qindatk is a runtime QML
 # import. The helper (python, stdlib only) runs as root through pkexec and
-# snapshots state with git. The 4B model comes with sci-ml/qinda-notes-llm.
+# snapshots state with git. The 4B model comes with sci-ml/qinda-notes-llm;
+# the optional 9B planner (packaging/gentoo/sci-ml/qindaportage-models in the
+# source tree) joins the overlay once its 6 GB distfile is in the Manifest.
 RDEPEND="
 	${PYTHON_DEPS}
 	>=gui-wm/qindaqt-desktop-0.1.0_pre20260907-r1
@@ -42,7 +44,6 @@ RDEPEND="
 	sci-ml/qinda-notes-llm
 	sys-apps/portage
 	sys-auth/polkit
-	qwen3-5-9b? ( sci-ml/qindaportage-models[qwen3-5-9b] )
 "
 DEPEND="${RDEPEND}"
 BDEPEND="virtual/pkgconfig"
