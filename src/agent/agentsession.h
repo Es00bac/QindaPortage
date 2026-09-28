@@ -10,6 +10,7 @@
 #include "agent/llmclient.h"
 #include "agent/toolregistry.h"
 
+#include <QHash>
 #include <QJsonArray>
 #include <QObject>
 #include <QVariantList>
@@ -110,7 +111,9 @@ private:
     QString m_streaming;
     QString m_status;
     QVector<ToolCall> m_pendingCalls;
-    QStringList m_recentCalls;  // "name args" for loop detection
+    QStringList m_recentCalls;  // "name args#resulthash" for loop detection
+    QHash<QString, QString> m_lastResultHash;
+    QString m_repeatSignature;
     std::function<QString()> m_contextProvider;
     std::function<QString(const QString &)> m_hintProvider;
     std::function<QString()> m_answerCheck;

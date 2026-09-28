@@ -171,6 +171,8 @@ void AgentSession::send(const QString &text)
     m_escalationSuggested = false;
     m_answerChecked = false;
     m_recentCalls.clear();
+    m_lastResultHash.clear();
+    m_repeatSignature.clear();
     m_iterations = 0;
     startTurn();
 }
@@ -286,6 +288,13 @@ void AgentSession::runNextTool()
                                       {QStringLiteral("tool_call_id"), call.id},
                                       {QStringLiteral("content"),
                                        QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Compact))}});
+        const QString sig = call.name + QLatin1Char(' ') + call.arguments;
+        const QString hash = QString::number(qHash(QJsonDocument(result).toJson(QJsonDocument::Compact)));
+        m_recentCalls.append(sig + QLatin1Char('#') + hash);
+        m_lastResultHash.insert(sig, hash);
+        // Arm the stop only when this exact (call, result) pair has now
+        // been seen twice; the third identical call is then refused.
+        m_repeatSignature = m_recentCalls.count(sig + QLatin1Char('#') + hash) >= 2 ? sig : QString();
         const ToolSpec *spec = m_tools->find(call.name);
         addEntry({{QStringLiteral("kind"), QStringLiteral("tool")},
                   {QStringLiteral("tool"), call.name},
@@ -296,10 +305,12 @@ void AgentSession::runNextTool()
         runNextTool();
     };
 
-    // Loop detection: the same call three times means the model is stuck.
+    // Loop detection: the same call answered with the same result three
+    // times means the model is stuck. (The same call with a different
+    // result is progress: pretend after the plan changed.)
     const QString signature = call.name + QLatin1Char(' ') + call.arguments;
-    m_recentCalls.append(signature);
-    if (m_recentCalls.count(signature) >= 3) {
+    if (m_recentCalls.count(signature + QLatin1Char('#') + m_lastResultHash.value(signature)) >= 2
+        && m_repeatSignature == signature) {
         m_pendingCalls.clear();
         m_escalationSuggested = true;
         addEntry({{QStringLiteral("kind"), QStringLiteral("note")},

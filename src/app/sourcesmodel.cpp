@@ -108,6 +108,14 @@ QString SourcesModel::addToPlan()
     ebuild.content = m_draft;
     ebuild.rationale = rationale;
     if (const QString why = m_plan->addStep(ebuild); !why.isEmpty()) return why;
+    // AGENT-NOTE: drafts carry KEYWORDS="~amd64" (honest for an unreviewed
+    // package), so a stable system needs this exact version accepted.
+    Ops::PlanStep keyword;
+    keyword.kind = Ops::PlanStep::AcceptKeyword;
+    keyword.atom = QStringLiteral("=%1/%2-%3").arg(m_category, packageName(), m_info.version);
+    keyword.values = {QStringLiteral("~amd64")};
+    keyword.rationale = tr("new local package %1; accept its testing keyword for this version only").arg(packageName());
+    if (const QString why = m_plan->addStep(keyword); !why.isEmpty()) return why;
     Ops::PlanStep install;
     install.kind = Ops::PlanStep::Emerge;
     install.values = {QStringLiteral("=%1/%2-%3::qinda-local").arg(m_category, packageName(), m_info.version)};

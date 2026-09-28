@@ -98,6 +98,10 @@ void Toolbox::runPretend(const QJsonObject &args, const ToolDone &done)
         QString why;
         if (!a.startsWith(QLatin1Char('@')) && !Ops::Validate::isAtom(a, &why)) {
             QJsonObject e = error(QStringLiteral("invalid atom %1: %2").arg(a, why));
+            // "cat/pn-1.0" is the most common slip: a version needs "=".
+            if (Ops::Validate::isAtom(QLatin1Char('=') + a)) {
+                e[QStringLiteral("error")] = QStringLiteral("a versioned atom needs an operator; use =%1 (or just the category/name)").arg(a);
+            }
             const QStringList guesses = suggestKeys(a);
             if (!guesses.isEmpty()) e[QStringLiteral("didYouMean")] = QJsonArray::fromStringList(guesses);
             done(e);
