@@ -1,0 +1,5 @@
+DESCRIPTION=Vim, an improved vi-style text editor
+EAPI=8
+IUSE=X gui
+KEYWORDS=amd64
+SLOT=0

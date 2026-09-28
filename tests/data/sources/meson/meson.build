@@ -1,0 +1,6 @@
+project('term', 'c', version: '1.28.0')
+pixman = dependency('pixman-1')
+wayland = dependency('wayland-client', version: '>= 1.20')
+utf8 = dependency('libutf8proc', required: get_option('grapheme'))
+scanner = dependency('wayland-scanner', native: true)
+threads = dependency('threads')

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pkgmetadata>
+	<use>
+		<flag name="gui">Build the <b>Qt</b> front end</flag>
+	</use>
+</pkgmetadata>

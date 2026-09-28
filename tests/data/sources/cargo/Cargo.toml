@@ -1,0 +1,15 @@
+[package]
+name = "fd-find"
+version = "10.5.0"
+description = "A simple, fast alternative to 'find'"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
+openssl-sys = { version = "0.9", optional = true }
+
+[build-dependencies]
+cc = "1"
+
+[dependencies.regex]
+version = "1"

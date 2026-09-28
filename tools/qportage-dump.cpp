@@ -7,9 +7,16 @@
 //   qportage-dump pkg <category/name>
 //   qportage-dump orphans
 //   qportage-dump unsatisfied
+//   qportage-dump search <text>
+//   qportage-dump avail <category/name>
+//   qportage-dump use <flag> [category/name]
+//   qportage-dump history <category/name>
 
+#include "core/buildhistory.h"
 #include "core/packagegraph.h"
 #include "core/portageconfig.h"
+#include "core/repoindex.h"
+#include "core/usedescriptions.h"
 #include "core/vardb.h"
 
 #include <QCoreApplication>
@@ -75,6 +82,47 @@ int main(int argc, char **argv)
         }
     } else if (cmd == QLatin1String("orphans")) {
         for (int n : graph.orphans()) out << db.packages().at(n).cpv() << "\n";
+    } else if (cmd == QLatin1String("search") || cmd == QLatin1String("avail")) {
+        t.restart();
+        RepoIndex index;
+        index.load(config);
+        out << "index " << index.count() << " packages, " << index.versionCount() << " versions, "
+            << index.categories().size() << " categories (" << t.elapsed() << " ms)\n";
+        index.setInstalledLookup([&db](const QString &key) { return !db.byKey(key).isEmpty(); });
+        const QStringList accept = config.value(QStringLiteral("ACCEPT_KEYWORDS")).isEmpty()
+            ? QStringList{QStringLiteral("amd64")}
+            : config.value(QStringLiteral("ACCEPT_KEYWORDS")).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (cmd == QLatin1String("search")) {
+            for (const SearchHit &h : index.search(args.mid(1).join(QLatin1Char(' ')), 20)) {
+                out << (h.installed ? "[I] " : "    ") << h.key << "-" << h.bestVersion << "  (" << h.score
+                    << ") " << h.description << "\n";
+            }
+        } else if (const AvailablePackage *p = index.find(args.value(1))) {
+            out << p->key << ": " << p->description << "\n  " << p->homepage << "\n";
+            for (const AvailableVersion &v : p->versions) {
+                out << "  " << v.version << ":" << v.slot << "::" << v.repo << (v.masked ? " [masked]" : "")
+                    << (v.exact ? "" : " [approx]") << "  " << v.keywords.join(QLatin1Char(' ')) << "\n";
+            }
+            const AvailableVersion *best = index.bestVisibleVersion(p->key, accept, &config);
+            out << "  best visible (" << accept.join(QLatin1Char(' ')) << "): "
+                << (best ? best->version : QStringLiteral("none")) << "\n";
+        }
+    } else if (cmd == QLatin1String("use")) {
+        UseDescriptions desc;
+        desc.load(config);
+        out << args.value(1) << " [" << desc.sourceOf(args.value(1), args.value(2)) << "] "
+            << desc.describe(args.value(1), args.value(2)) << "\n";
+    } else if (cmd == QLatin1String("history")) {
+        t.restart();
+        BuildHistory history;
+        if (!history.load()) out << history.error() << "\n";
+        out << "records " << history.records().size() << " (" << t.elapsed() << " ms), last sync "
+            << history.lastSync() << "\n";
+        for (const MergeRecord &r : history.history(args.value(1))) {
+            out << "  " << r.cpv << " start " << r.start << " " << r.seconds << " s"
+                << (r.ok ? "" : " FAILED") << (r.binary ? " binary" : "") << "\n";
+        }
+        out << "  estimate " << history.estimateSeconds(args.value(1)) << " s\n";
     } else if (cmd == QLatin1String("unsatisfied")) {
         for (const auto &u : graph.unsatisfied()) {
             out << db.packages().at(u.from).cpv() << " (" << PackageGraph::typesText(u.types) << "): "

@@ -1,0 +1,38 @@
+1790000000: Started emerge on: Sep 20, 2026 10:00:00
+1790000000:  *** emerge --oneshot app-misc/jq dev-libs/foo app-misc/broken
+1790000010:  >>> emerge (1 of 3) app-misc/jq-1.8.2 to /
+1790000010:  === (1 of 3) Cleaning (app-misc/jq-1.8.2::/var/db/repos/gentoo/app-misc/jq/jq-1.8.2.ebuild)
+1790000011:  === (1 of 3) Compiling/Merging (app-misc/jq-1.8.2::/var/db/repos/gentoo/app-misc/jq/jq-1.8.2.ebuild)
+1790000070:  ::: completed emerge (1 of 3) app-misc/jq-1.8.2 to /
+1790000071:  >>> emerge (2 of 3) dev-libs/foo-1.0 to /
+1790000071:  === (2 of 3) Merging Binary (dev-libs/foo-1.0::/var/cache/binpkgs/dev-libs/foo/foo-1.0-1.gpkg.tar)
+1790000075:  ::: completed emerge (2 of 3) dev-libs/foo-1.0 to /
+1790000080:  >>> emerge (3 of 3) app-misc/broken-2 to /
+1790000080:  === (3 of 3) Compiling/Merging (app-misc/broken-2::/var/db/repos/gentoo/app-misc/broken/broken-2.ebuild)
+1790000100:  *** Finished. Cleaning up...
+1790000100:  *** exiting unsuccessfully with status '1'.
+1790000100:  *** terminating.
+1790050000: Started emerge on: Sep 21, 2026 00:00:00
+1790050000:  *** emerge --jobs=4 app-misc/jq dev-lang/python
+1790050005:  >>> emerge (1 of 2) app-misc/jq-1.8.2 to /
+1790050006:  >>> emerge (2 of 2) dev-lang/python-3.14.7 to /
+1790050080:  ::: completed emerge (2 of 2) dev-lang/python-3.14.7 to /
+1790050105:  ::: completed emerge (1 of 2) app-misc/jq-1.8.2 to /
+1790050105:  *** exiting successfully.
+1790050106:  *** terminating.
+1790100000: Started emerge on: Sep 22, 2026 00:00:00
+1790100000:  *** emerge --sync
+1790100000:  === sync
+1790100005: >>> Syncing repository 'gentoo' into '/var/db/repos/gentoo'...
+1790100050: === Sync completed for gentoo
+1790100060: >>> Syncing repository 'qindaqt' into '/var/db/repos/qindaqt'...
+1790100070: === Sync completed for qindaqt
+1790100071:  *** terminating.
+1790200000: Started emerge on: Sep 23, 2026 00:00:00
+1790200000:  *** emerge --oneshot app-misc/jq
+1790200010:  >>> emerge (1 of 1) app-misc/jq-1.8.2-r1 to /
+1790200090:  ::: completed emerge (1 of 1) app-misc/jq-1.8.2-r1 to /
+1790200090:  *** exiting successfully.
+1790200091:  *** terminating.
+1790300000: Started emerge on: Sep 24, 2026 00:00:00
+1790300010:  >>> emerge (1 of 1) www-client/firefox-156.0 to /
