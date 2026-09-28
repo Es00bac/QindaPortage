@@ -16,9 +16,9 @@ EGIT_REPO_URI="file:///home/cabewse/git/LocalAiPortage.git
 	file:///home/cabewse/LocalAiPortage"
 # AGENT-NOTE: pin the reviewed commit here and bump the revision with it;
 # an unpinned git-r3 ebuild builds whatever the hub holds.
-# 336a5c2e: first release; 17 test suites; assistant verified end to end with
+# 7a353cd1: first release; 17 test suites; assistant verified end to end with
 # qportage-ask on the local Qwen3.5-4B and on qinda's tier.
-EGIT_COMMIT="336a5c2e6e9cef36dbc69375b3deb8034da87ecf"
+EGIT_COMMIT="7a353cd14a2953b5ae5e2ea03a01462247e4899e"
 
 LICENSE="GPL-3+"
 SLOT="0"
