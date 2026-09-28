@@ -102,6 +102,15 @@ Tk.Flex {
                         text: view.sources ? view.sources.packageName + "-" + view.sources.version : ""
                         Tk.Flex.alignSelf: Tk.Flex.Stretch
                     }
+                    Tk.Notice {
+                        Tk.Flex.alignSelf: Tk.Flex.Stretch
+                        visible: view.sources && view.sources.alreadyPackaged.length > 0
+                        variant: "warning"
+                        title: qsTr("Already packaged")
+                        text: view.sources ? qsTr("%1 is available from a repository. Installing that is simpler and gets updates; "
+                                                  + "package it here only if you need upstream %2.")
+                                                 .arg(view.sources.alreadyPackaged.join(", ")).arg(view.sources.version) : ""
+                    }
                     Tk.Label {
                         text: view.info.description || ""
                         wrapMode: Text.Wrap

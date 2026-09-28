@@ -321,6 +321,14 @@ void Toolbox::registerOpsTools(PlanModel *plan)
                         }
                         webGet(url, [done, url](const QByteArray &body, const QString &typeOrError) {
                             if (body.isEmpty()) { done(error(typeOrError)); return; }
+                            const bool binary = body.left(4096).contains('\0')
+                                || typeOrError.contains(QLatin1String("octet-stream")) || typeOrError.contains(QLatin1String("gzip"))
+                                || typeOrError.contains(QLatin1String("x-tar")) || typeOrError.contains(QLatin1String("zip"));
+                            if (binary) {
+                                done(error(QStringLiteral("%1 is binary (%2); archives are handled by probe_source and the ebuild's "
+                                                          "SRC_URI, not read as text").arg(url.toString(), typeOrError)));
+                                return;
+                            }
                             done({{QStringLiteral("url"), url.toString()}, {QStringLiteral("text"), pageText(body, typeOrError, 9000)}});
                         });
                     }});
@@ -358,6 +366,18 @@ void Toolbox::registerSourceTools(SourcesModel *sources)
                                 return;
                             }
                             QJsonObject o = sources->sourceInfo().toJson(false);
+                            // AGENT-NOTE: never package what a repository already
+                            // carries (docs/design.md "Prefer, in order").
+                            const QStringList packaged = sources->alreadyPackaged();
+                            if (!packaged.isEmpty()) {
+                                done({{QStringLiteral("alreadyInRepository"), QJsonArray::fromStringList(packaged)},
+                                      {QStringLiteral("name"), sources->packageName()},
+                                      {QStringLiteral("upstreamVersion"), sources->version()},
+                                      {QStringLiteral("next"), QStringLiteral(
+                                           "this software is already packaged: plan_emerge the repository package (pretend first). "
+                                           "Package it yourself only if the user needs a newer version than the repository has.")}});
+                                return;
+                            }
                             o[QStringLiteral("dependencyAtoms")] = Ops::DependencyHints::toJson(sources->resolutions());
                             o[QStringLiteral("ebuildPath")] = sources->ebuildPath();
                             o[QStringLiteral("draftEbuild")] = sources->draft();

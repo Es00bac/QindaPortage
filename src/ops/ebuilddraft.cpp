@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ops/ebuilddraft.h"
 
+#include "ops/buildfiles.h"
+
 #include <QRegularExpression>
 
 namespace QindaPortage::Ops::EbuildDraft {
@@ -176,7 +178,14 @@ QString generate(const SourceInfo &info, const QMap<QString, QString> &atoms, co
         inherit.append(bs);
     }
     if (bs == QLatin1String("cargo")) {
-        pre += QStringLiteral("# AGENT: fill CRATES from Cargo.lock (pycargoebuild) before Manifest.\nCRATES=\"\"\n");
+        QStringList git;
+        const QStringList crates = BuildFiles::cargoCrates(info.buildFiles.value(QStringLiteral("Cargo.lock")), &git);
+        if (crates.isEmpty()) {
+            pre += QStringLiteral("# AGENT: fill CRATES from Cargo.lock (pycargoebuild) before Manifest.\nCRATES=\"\"\n");
+        } else {
+            pre += QStringLiteral("# From Cargo.lock (%1 crates).\nCRATES=\"\n\t%2\n\"\n").arg(crates.size()).arg(crates.join(QStringLiteral("\n\t")));
+            if (!git.isEmpty()) pre += QStringLiteral("# AGENT: git crates need GIT_CRATES: %1\n").arg(git.join(QStringLiteral(", ")));
+        }
     }
     if (bs == QLatin1String("autotools") && !info.files.contains(QStringLiteral("configure"))) {
         phases += QStringLiteral("src_prepare() {\n\tdefault\n\teautoreconf\n}\n\n");

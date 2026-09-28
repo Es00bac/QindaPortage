@@ -62,6 +62,22 @@ QString SourcesModel::ebuildPath() const
     return m_category + QLatin1Char('/') + packageName() + QLatin1Char('/') + Ops::EbuildDraft::fileName(m_info);
 }
 
+QStringList SourcesModel::alreadyPackaged() const
+{
+    const SystemSnapshot *snap = m_system->snapshot();
+    const QString pn = packageName();
+    if (!snap || pn.isEmpty()) return {};
+    QStringList out;
+    for (const Core::SearchHit &h : snap->index.search(pn, 10)) {
+        if (h.key.section(QLatin1Char('/'), 1).compare(pn, Qt::CaseInsensitive) != 0) continue;
+        const Core::AvailablePackage *p = snap->index.find(h.key);
+        const QString repo = p && !p->versions.isEmpty() ? p->versions.last().repo : QString();
+        if (repo == QLatin1String("qinda-local")) continue;
+        out.append(h.key + QLatin1Char('-') + h.bestVersion + (repo.isEmpty() ? QString() : QStringLiteral("::") + repo));
+    }
+    return out;
+}
+
 void SourcesModel::setDraft(const QString &text)
 {
     if (text == m_draft) return;

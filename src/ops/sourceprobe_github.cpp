@@ -162,7 +162,7 @@ void SourceProbe::githubFiles(const QString &ref, const QStringList &names)
     for (const QString &name : names) {
         const QUrl url(QStringLiteral("https://raw.githubusercontent.com/%1/%2/%3/%4").arg(m_info.owner, m_info.repo, ref, name));
         get(url, [this, name, pending, finalize](int status, const QByteArray &body) {
-            if (status == 200) m_info.buildFiles.insert(name, QString::fromUtf8(body.left(64 * 1024)));
+            if (status == 200) m_info.buildFiles.insert(name, QString::fromUtf8(body.left(name == QLatin1String("Cargo.lock") ? 4 * 1024 * 1024 : 64 * 1024)));
             else m_info.warnings.append(QStringLiteral("could not read %1 (HTTP %2)").arg(name).arg(status));
             if (--*pending == 0) finalize();
         });

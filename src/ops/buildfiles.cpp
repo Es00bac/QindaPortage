@@ -159,12 +159,38 @@ QStringList interestingFiles(const QStringList &files)
     static const QStringList wanted = {
         QStringLiteral("CMakeLists.txt"), QStringLiteral("meson.build"), QStringLiteral("meson_options.txt"),
         QStringLiteral("meson.options"), QStringLiteral("Cargo.toml"), QStringLiteral("go.mod"),
-        QStringLiteral("pyproject.toml"), QStringLiteral("setup.py"), QStringLiteral("setup.cfg"),
+        QStringLiteral("Cargo.lock"), QStringLiteral("pyproject.toml"), QStringLiteral("setup.py"), QStringLiteral("setup.cfg"),
         QStringLiteral("configure.ac"), QStringLiteral("configure.in"), QStringLiteral("package.json"),
         QStringLiteral("Makefile"), QStringLiteral("LICENSE"), QStringLiteral("LICENSE.md"),
         QStringLiteral("LICENSE.txt"), QStringLiteral("COPYING"), QStringLiteral("README.md")};
     QStringList out;
     for (const QString &f : wanted) if (files.contains(f)) out.append(f);
+    return out;
+}
+
+QStringList cargoCrates(const QString &lockText, QStringList *gitSources)
+{
+    // AGENT-NOTE: cargo.eclass (EAPI 8) takes CRATES as "name@version"
+    // entries; only crates.io packages (those with a checksum) belong there.
+    // Git sources need GIT_CRATES and are reported for the assistant.
+    QStringList out;
+    const QStringList blocks = lockText.split(QStringLiteral("[[package]]"));
+    static const QRegularExpression nameRe(QStringLiteral("\\bname\\s*=\\s*\"([^\"]+)\""));
+    static const QRegularExpression versionRe(QStringLiteral("\\bversion\\s*=\\s*\"([^\"]+)\""));
+    static const QRegularExpression sourceRe(QStringLiteral("\\bsource\\s*=\\s*\"([^\"]+)\""));
+    for (int i = 1; i < blocks.size(); ++i) {
+        const QString &b = blocks.at(i);
+        const QString name = nameRe.match(b).captured(1);
+        const QString version = versionRe.match(b).captured(1);
+        const QString source = sourceRe.match(b).captured(1);
+        if (name.isEmpty() || version.isEmpty() || source.isEmpty()) continue; // the package itself / path deps
+        if (source.startsWith(QLatin1String("registry+"))) {
+            out.append(name + QLatin1Char('@') + version);
+        } else if (gitSources) {
+            gitSources->append(name + QLatin1Char('@') + version + QStringLiteral(" (") + source + QLatin1Char(')'));
+        }
+    }
+    out.removeDuplicates();
     return out;
 }
 

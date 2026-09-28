@@ -33,6 +33,9 @@ QString detectBuildSystem(const QStringList &topLevelFiles);
 // Build files worth fetching for dependency extraction.
 QStringList interestingFiles(const QStringList &topLevelFiles);
 
+// crates.io packages of a Cargo.lock as cargo.eclass CRATES entries
+// ("name@version"); git sources go to `gitSources` when given.
+QStringList cargoCrates(const QString &lockText, QStringList *gitSources = nullptr);
 QVector<DeclaredDependency> fromCMake(const QString &text);
 QVector<DeclaredDependency> fromMeson(const QString &text);
 QVector<DeclaredDependency> fromPyproject(const QString &text);

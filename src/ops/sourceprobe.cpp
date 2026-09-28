@@ -106,7 +106,7 @@ void SourceProbe::analyzeTree(const QString &dir, SourceInfo *info)
     }
     for (const QString &name : BuildFiles::interestingFiles(info->files)) {
         QFile f(root.filePath(name));
-        if (f.open(QIODevice::ReadOnly)) info->buildFiles.insert(name, QString::fromUtf8(f.read(kMaxFileBytes)));
+        if (f.open(QIODevice::ReadOnly)) info->buildFiles.insert(name, QString::fromUtf8(f.read(name == QLatin1String("Cargo.lock") ? 64 * kMaxFileBytes : kMaxFileBytes)));
     }
     complete(info);
 }

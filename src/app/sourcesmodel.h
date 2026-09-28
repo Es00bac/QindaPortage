@@ -34,6 +34,7 @@ class SourcesModel final : public QObject
     Q_PROPERTY(QString version READ version NOTIFY resultChanged)
     Q_PROPERTY(QString ebuildPath READ ebuildPath NOTIFY resultChanged)
     Q_PROPERTY(QString draft READ draft WRITE setDraft NOTIFY resultChanged)
+    Q_PROPERTY(QStringList alreadyPackaged READ alreadyPackaged NOTIFY resultChanged)
 
 public:
     SourcesModel(SystemModel *system, PlanModel *plan, QObject *parent = nullptr);
@@ -51,6 +52,9 @@ public:
     QString draft() const { return m_draft; }
     void setDraft(const QString &text);
     const Ops::SourceInfo &sourceInfo() const { return m_info; }
+    // Repository packages with the probed software's name
+    // ("sys-apps/hexyl-0.17.0::gentoo"): prefer them over a new ebuild.
+    QStringList alreadyPackaged() const;
     const QVector<Ops::DependencyResolution> &resolutions() const { return m_resolutions; }
 
     Q_INVOKABLE void probe(const QString &url);
