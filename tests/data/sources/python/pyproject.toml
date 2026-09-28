@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling>=1.20"]
+build-backend = "hatchling.build"
+
+[project]
+name = "Fancy_Tool"
+version = "0.4.2"
+description = "A fancy command line tool"
+dependencies = [
+    "requests>=2.31",
+    "rich[jupyter] ; python_version >= '3.10'",
+    "click",
+]
+
+[project.optional-dependencies]
+yaml = ["PyYAML>=6"]
+
+[project.scripts]
+fancy = "fancy_tool.cli:main"

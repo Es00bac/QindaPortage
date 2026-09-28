@@ -1,0 +1,6 @@
+DESCRIPTION=Regular expression library
+EAPI=8
+IUSE=static-libs
+KEYWORDS=amd64 x86
+SLOT=0/5
+LICENSE=BSD-2
