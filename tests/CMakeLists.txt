@@ -10,3 +10,10 @@ foreach(test IN ITEMS tst_version tst_atom tst_depspec tst_shellvars tst_graph t
     add_test(NAME ${test} COMMAND ${test})
     set_tests_properties(${test} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 endforeach()
+
+foreach(test IN ITEMS tst_agentsession tst_llmruntime)
+    qt_add_executable(${test} cpp/${test}.cpp)
+    target_link_libraries(${test} PRIVATE qportage_agent Qt6::Test)
+    add_test(NAME ${test} COMMAND ${test})
+    set_tests_properties(${test} PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endforeach()
