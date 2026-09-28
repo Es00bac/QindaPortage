@@ -183,13 +183,25 @@ QString Toolbox::planCheck() const
     }
     if (m_plan->plan().writesEbuilds() && !build) {
         return QStringLiteral("The draft plan writes an ebuild but never installs it. Add plan_emerge for the new package "
-                              "(=cat/pn-version::qinda-local), run pretend, then answer.");
+                              "(=cat/pn-version::qinda-local), pretend, then call apply_plan.");
+    }
+    // AGENT-NOTE: found live (2026-09-28): the model verified a plan and
+    // answered without applying it ("it plans, but it does nothing"). When
+    // acting on the user's behalf is on, an unapplied plan at the end of a
+    // turn is sent back once.
+    if (m_plan->autonomous()) {
+        if (config && !build) {
+            return QStringLiteral("The draft plan is not applied yet. If configuration alone is what the user asked for, call "
+                                  "apply_plan now. If the packages should also be installed or rebuilt, add plan_emerge, "
+                                  "pretend, then call apply_plan.");
+        }
+        return QStringLiteral("The draft plan is verified but not applied. If the user asked for this change, call apply_plan "
+                              "now; if they only asked a question or wanted a proposal, say so and answer.");
     }
     if (config && !build) {
         return QStringLiteral("The draft plan only changes configuration; nothing installs or rebuilds the packages it is for. "
-                              "Add the plan_emerge step (e.g. the requested atoms, or --oneshot for packages that only need a "
-                              "rebuild), run pretend, then answer. If configuration alone is really what the user asked for, "
-                              "say so and answer without changes.");
+                              "Add the plan_emerge step if they should be, run pretend, then answer. If configuration alone is "
+                              "what the user asked for, say so and answer.");
     }
     return {};
 }

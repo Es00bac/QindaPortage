@@ -4,7 +4,7 @@
 // real tools and prints the transcript and the resulting draft plan. A
 // development and verification seam, not installed.
 //
-//   qportage-ask [--tier local|qinda] [--apply] "install jq with static libraries"
+//   qportage-ask [--tier local|qinda] [--apply] "install jq with static libraries" [--then "…"]
 //
 // Without --apply nothing is changed (acting on the user's behalf is off).
 
@@ -42,7 +42,13 @@ int main(int argc, char **argv)
             break;
         }
     }
-    const QString request = args.join(QLatin1Char(' '));
+    // "first request" --then "follow-up" --then "…": sent one after another.
+    QStringList requests{QString()};
+    for (const QString &a : args) {
+        if (a == QLatin1String("--then")) requests.append(QString());
+        else requests.last() += (requests.last().isEmpty() ? QString() : QStringLiteral(" ")) + a;
+    }
+    const QString request = requests.takeFirst();
     QTextStream out(stdout);
 
     App::SystemModel system;
@@ -87,6 +93,11 @@ int main(int argc, char **argv)
     QObject::connect(&session, &Agent::AgentSession::transcriptChanged, &app, flush);
     QObject::connect(&session, &Agent::AgentSession::answered, &app, [&] {
         flush();
+        if (!requests.isEmpty()) {
+            const QString next = requests.takeFirst();
+            QTimer::singleShot(0, &app, [&session, next] { session.send(next); });
+            return;
+        }
         out << "\n--- draft plan (" << plan.stepCount() << " steps) ---\n";
         for (const QString &line : plan.plan().describe()) out << "  " << line << "\n";
         for (const QString &frag : plan.configPreview()) out << frag << "\n";

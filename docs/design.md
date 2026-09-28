@@ -261,6 +261,41 @@ bumping the ebuild, and it appears in the graph with the `qinda-local` badge.
 | **Activity** | the transaction journal, live build log, and revert |
 | **Assistant** | a dock on every view: chat, tool-call trace, plan card, model and tier state |
 
+## The assistant acts (2026-09-28)
+
+QindaPortage is an agent harness and a package manager in one. The
+assistant has only the tools package management needs, all of them scoped
+in code:
+
+- **Read:** `system_profile`, `find_packages`, `package_info`,
+  `reverse_deps`, `use_flag_info`, `read_config` (allowlisted paths),
+  `build_log`, `read_news`, `list_transactions`, `web_fetch`,
+  `search_bugs`, `probe_source`.
+- **Plan:** `plan_*` steps and `pretend` on a virtual configuration root.
+- **Act:** `apply_plan` and `revert_transaction`.
+
+It has no shell, no file writes outside the plan, and no arbitrary emerge
+arguments.
+
+`apply_plan` previews the plan again and refuses unless the preview
+resolves. It also refuses, and asks the user instead, when "act" is switched
+off or when `PlanModel::riskReasons()` finds any of these:
+
+- removal of @system or toolchain packages;
+- a downgrade;
+- an unmask;
+- `**` keywords;
+- more than 80 merges.
+
+If the model ends a turn with a verified plan it has not applied, the session
+sends it back once (`Toolbox::planCheck`). The user can also approve in the
+chat ("apply", "yes, do it") or with the dock's Apply button. For a risky
+plan, the user's approval is confirmed once more with the risks named.
+
+The root helper runs as a session: one pkexec authentication, kept until it
+has been idle for N minutes (default 15, set in Settings). With
+USE=wheel-nopasswd, a polkit rule lets local wheel users skip the prompt.
+
 ## Safety rules (invariants)
 
 1. The GUI never runs a mutating command. Only the helper mutates, and only
