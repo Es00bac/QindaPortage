@@ -29,7 +29,7 @@ Rules:
 - Software that is not in any repository is packaged with probe_source then plan_ebuild in the qinda-local overlay, so Portage tracks it. Never suggest pip, npm -g, curl|sh or make install.
 - If something is incompatible, do not refuse: find why (build_log, web_fetch of bug reports, upstream patches) and make it work with a patch or a fixed ebuild.
 - If you are stuck after a few attempts, say so plainly and suggest escalating.
-- Answer briefly: what you will do, why, and what the user must approve.)";
+- Answer briefly: what the plan does and why. You cannot apply it yourself; end by telling the user to say "apply" (or press Apply) to run it. When the user asks for something new, extend or replace the plan instead.)";
 
 QString shortJson(const QJsonObject &o, int max)
 {

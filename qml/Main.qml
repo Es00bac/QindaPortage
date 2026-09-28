@@ -64,6 +64,30 @@ Tk.AppWindow {
         assistant.send(text)
     }
 
+    // Approval from the chat or the dock's Apply button. The plan is
+    // previewed first when it changed since the last preview; pkexec then
+    // asks polkit, and the helper snapshots before changing anything.
+    property bool applyWhenPreviewed: false
+    function applyPlan() {
+        if (planModel.stepCount === 0 || planModel.applying) return
+        if (planModel.previewCurrent && !planModel.previewing) {
+            startApply()
+            return
+        }
+        window.applyWhenPreviewed = true
+        assistant.inject(qsTr("The user approved the plan. Previewing it once more, then applying."), false)
+        if (!planModel.previewing) planModel.runPreview()
+    }
+    function startApply() {
+        window.applyWhenPreviewed = false
+        assistant.inject(qsTr("The user approved the plan; applying it now (the local model is unloaded while it builds)."), false)
+        if (!planModel.apply()) {
+            assistant.inject(qsTr("Could not start the helper: %1").arg(planModel.applyLog.join("\n")), false)
+            return
+        }
+        window.page = "changes"
+    }
+
     function select(key) {
         window.selectedKey = key
     }
@@ -91,9 +115,21 @@ Tk.AppWindow {
     }
     Connections {
         target: planModel
+        function onPreviewChanged() {
+            if (!window.applyWhenPreviewed || planModel.previewing || !planModel.previewCurrent) return
+            if (planModel.preview.resolved) {
+                window.startApply()
+            } else {
+                window.applyWhenPreviewed = false
+                window.page = "changes"
+                assistant.inject(qsTr("The preview no longer resolves, so nothing was applied. Problems: %1. Fix the plan.")
+                                 .arg((planModel.preview.problems || []).map(function (p) { return p.title }).join("; ")), true)
+            }
+        }
         function onApplyFinished(ok, txn, error, logTail) {
             systemModel.reload()
             window.showNote(ok ? qsTr("Transaction %1 applied").arg(txn) : qsTr("Transaction %1 failed").arg(txn))
+            if (ok) assistant.inject(qsTr("Applied as transaction %1. It can be reverted from Activity.").arg(txn), false)
             if (!ok) {
                 // The model was unloaded for the build; asking reloads it.
                 assistant.inject(qsTr("Applying the plan failed (transaction %1): %2\nLast output:\n%3\n"
@@ -304,6 +340,7 @@ Tk.AppWindow {
                 plan: planModel
                 onEscalateRequested: escalateDialog.open()
                 onPlanRequested: window.page = "changes"
+                onApplyRequested: window.applyPlan()
                 onCloseRequested: window.assistantVisible = false
             }
         }

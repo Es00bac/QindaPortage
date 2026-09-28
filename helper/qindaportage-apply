@@ -417,4 +417,14 @@ def main(argv):
 
 
 if __name__ == '__main__':
-    sys.exit(main(sys.argv[1:]))
+    # AGENT-CONTRACT: the executor waits for a "result" event; an unexpected
+    # failure must still produce one instead of a bare traceback.
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except SystemExit:
+        raise
+    except BaseException as e:  # noqa: BLE001 - last resort, reported to the GUI
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        emit(event='result', ok=False, txn='', error='helper failed: %s: %s' % (type(e).__name__, e))
+        sys.exit(1)

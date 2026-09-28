@@ -18,6 +18,8 @@ Tk.Box {
     signal escalateRequested()
     signal closeRequested()
     signal planRequested()
+    // The user approved the pending plan in the chat or with the Apply button.
+    signal applyRequested()
 
     color: Tk.Theme.color.panel
     borderLeft: 1
@@ -26,6 +28,14 @@ Tk.Box {
     function send() {
         var text = input.text.trim()
         if (text.length === 0 || dock.session.busy) return
+        // AGENT-NOTE: the assistant cannot apply anything itself; a short
+        // "yes / apply / go ahead" while a plan waits is the user's approval
+        // and goes to the same apply path as the Apply button.
+        if (dock.plan && dock.plan.stepCount > 0 && !dock.plan.applying && Format.isApproval(text)) {
+            input.text = ""
+            dock.applyRequested()
+            return
+        }
         if (dock.plan && dock.plan.goal.length === 0) dock.plan.goal = text
         dock.session.send(text)
         input.text = ""
@@ -220,14 +230,28 @@ Tk.Box {
                 Tk.Label {
                     Tk.Flex.grow: 1
                     Tk.Flex.basis: 0
-                    text: dock.plan ? qsTr("Draft plan: %1").arg(Format.plural(dock.plan.stepCount, qsTr("step"), qsTr("steps"))) : ""
+                    text: !dock.plan ? ""
+                          : dock.plan.applying ? qsTr("Applying: %1").arg(dock.plan.applyStep)
+                          : qsTr("Plan: %1 — say \"apply\" to run it").arg(Format.plural(dock.plan.stepCount, qsTr("step"), qsTr("steps")))
+                    elide: Text.ElideRight
                 }
                 Tk.Button {
                     small: true
-                    variant: "accent"
+                    variant: "ghost"
                     text: qsTr("Review")
                     iconName: "arrow-right"
+                    tooltip: qsTr("Open the plan and its impact on the Changes page")
                     onClicked: dock.planRequested()
+                }
+                Tk.Button {
+                    objectName: "dockApply"
+                    small: true
+                    variant: "accent"
+                    iconName: "play"
+                    text: dock.plan && dock.plan.applying ? qsTr("Applying…") : qsTr("Apply")
+                    busy: dock.plan && (dock.plan.applying || dock.plan.previewing)
+                    tooltip: qsTr("Run the plan (you can also just say \"apply\")")
+                    onClicked: dock.applyRequested()
                 }
             }
         }

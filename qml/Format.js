@@ -61,3 +61,12 @@ function actionVariant(action) {
     default: return "default"
     }
 }
+
+// A chat reply that approves the pending plan ("apply", "yes, do it", "go
+// ahead", "install it"). Short replies only: a longer message is a new
+// request for the assistant, not a yes.
+function isApproval(text) {
+    var t = String(text).trim().toLowerCase().replace(/[.!]+$/, "")
+    if (t.length === 0 || t.length > 40) return false
+    return /^(yes|y|yep|yeah|ok|okay|sure|approve[d]?|apply( it| the plan)?|do it|go( ahead)?|proceed|run it|install( it)?|execute( it)?|confirm(ed)?)(,? (please|do it|go ahead|apply( it)?|now))*$/.test(t)
+}

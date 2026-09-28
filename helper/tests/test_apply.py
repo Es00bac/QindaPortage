@@ -75,11 +75,11 @@ class HelperTest(unittest.TestCase):
         os.chmod(path, 0o755)
         return path
 
-    def helper(self, *args, stdin=''):
+    def helper(self, *args, stdin='', cwd=None):
         env = dict(os.environ, FAKE_LOG=self.log)
         proc = subprocess.run([sys.executable, HELPER, '--root', self.root, '--state-dir', self.state,
                                '--emerge-cmd', self.emerge, '--ebuild-cmd', self.ebuild, *args],
-                              input=stdin, capture_output=True, text=True, env=env)
+                              input=stdin, capture_output=True, text=True, env=env, cwd=cwd)
         events = [json.loads(line) for line in proc.stdout.splitlines() if line.startswith('{')]
         return proc.returncode, events, proc
 
@@ -93,6 +93,18 @@ class HelperTest(unittest.TestCase):
 
     def result(self, events):
         return [e for e in events if e['event'] == 'result'][-1]
+
+    def test_runs_from_inside_the_root(self):
+        # Regression (2026-09-28, first live run): pkexec keeps the caller's
+        # cwd; started from /tmp with --root /, git resolved "etc/portage"
+        # as /tmp/etc/portage and the snapshot failed.
+        inside = os.path.join(self.root, 'var')
+        os.makedirs(inside, exist_ok=True)
+        plan = dict(title='t', goal='g', steps=[
+            {'kind': 'use', 'atom': 'app-misc/tool', 'values': ['gui'], 'rationale': 'cwd regression'}])
+        code, events, proc = self.helper('apply', stdin=json.dumps(plan), cwd=inside)
+        self.assertEqual(code, 0, proc.stderr)
+        self.assertTrue(self.result(events)['ok'])
 
     def test_config_steps_and_emerge(self):
         code, events, proc = self.apply([

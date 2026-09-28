@@ -56,7 +56,11 @@ class State:
         if bare_init:
             env.pop('GIT_DIR')
             env.pop('GIT_WORK_TREE')
+        # AGENT-GUARD: pathspecs ("etc/portage") are relative to the working
+        # directory; run inside the work tree root, never where the helper
+        # happened to be started (pkexec keeps the caller's cwd).
         result = subprocess.run([self.git_cmd, '-c', 'core.bare=false', *args], env=env,
+                                cwd=self.root if not bare_init else self.state_dir,
                                 capture_output=True, check=False)
         if check and result.returncode != 0:
             raise RuntimeError('git %s failed: %s' % (args[0], result.stderr.decode(errors='replace')))
