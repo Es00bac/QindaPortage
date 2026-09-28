@@ -241,6 +241,14 @@ void PretendRunner::launch(const QString &program, const QStringList &args, cons
     m_process = new QProcess(this);
     m_process->setProcessChannelMode(QProcess::MergedChannels);
     QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
+    // AGENT-GUARD: an inherited PORTAGE_CONFIGROOT/ROOT (e.g. when launched
+    // from an ebuild phase or a shell that exported them) would silently
+    // resolve against the wrong configuration; only ours may apply. The same
+    // goes for USE/ACCEPT_KEYWORDS/FEATURES overrides in the environment.
+    for (const char *var : {"PORTAGE_CONFIGROOT", "ROOT", "EROOT", "SYSROOT", "USE", "ACCEPT_KEYWORDS",
+                            "ACCEPT_LICENSE", "FEATURES", "EMERGE_DEFAULT_OPTS"}) {
+        e.remove(QString::fromLatin1(var));
+    }
     e.insert(QStringLiteral("NOCOLOR"), QStringLiteral("true"));
     for (const QString &kv : env) e.insert(kv.section(QLatin1Char('='), 0, 0), kv.section(QLatin1Char('='), 1));
     m_process->setProcessEnvironment(e);
