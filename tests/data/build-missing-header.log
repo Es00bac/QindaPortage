@@ -1,0 +1,11 @@
+>>> Compiling source in /var/tmp/portage/app-misc/tool-1.0/work/tool-1.0 ...
+[1/12] c++ -Isrc -O2 -c src/main.cpp -o main.o
+FAILED: main.o
+c++ -Isrc -O2 -c src/main.cpp -o main.o
+src/main.cpp:3:10: fatal error: nlohmann/json.hpp: No such file or directory
+    3 | #include <nlohmann/json.hpp>
+      |          ^~~~~~~~~~~~~~~~~~~
+compilation terminated.
+ninja: build stopped: subcommand failed.
+ * ERROR: app-misc/tool-1.0::qinda-local failed (compile phase):
+ *   ninja -v -j16 -l16 failed

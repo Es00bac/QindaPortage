@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=QindaPortage
+GenericName=Package Manager
+Comment=See, plan and repair Portage with a local LLM: installed packages, USE flags, dependency graph, impact previews
+Exec=qindaportage
+Icon=org.qindaqt.Portage
+Terminal=false
+Categories=Qt;System;PackageManager;
+Keywords=portage;emerge;gentoo;packages;use;dependencies;ebuild;llm;
+StartupNotify=true

@@ -98,8 +98,9 @@ qint64 LlmRuntime::memAvailableBytes()
 {
     QFile f(QStringLiteral("/proc/meminfo"));
     if (!f.open(QIODevice::ReadOnly)) return 0;
-    while (!f.atEnd()) {
-        const QByteArray line = f.readLine();
+    // AGENT-GUARD: /proc files report size 0, so atEnd() is true before the
+    // first read; read everything, then split.
+    for (const QByteArray &line : f.readAll().split('\n')) {
         if (line.startsWith("MemAvailable:")) {
             return line.mid(13).trimmed().split(' ').value(0).toLongLong() * 1024;
         }
