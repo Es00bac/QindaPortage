@@ -1,0 +1,23 @@
+[desktop] Local copy of remote index is up-to-date and will be used.
+[gentoo] Local copy of remote index is within TTL and will be used.
+WARNING: One or more repositories have missing repo_name entries:
+
+	/var/db/repos/steam-overlay/profiles/repo_name
+
+NOTE: Each repo_name entry should be a plain text file containing a
+unique name for the repository on the first line.
+
+
+
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  ... done!
+Dependency resolution took 7.91 s (backtrack: 0/20).
+
+[binary   Rg  ~] media-video/obs-studio-32.2.2::gentoo  USE="alsa pulseaudio screencast truetype v4l wayland websocket -browser -decklink -fdk -jack -lua -mpegts -nvenc -python -qsv -sndio -speex -test-input -vlc" LUA_SINGLE_TARGET="luajit" PYTHON_SINGLE_TARGET="python3_14 -python3_12 -python3_13" 0 KiB
+
+Total: 1 package (1 reinstall, 1 binary), Size of downloads: 0 KiB
+
+ * IMPORTANT: 1 news items need reading for repository 'gentoo'.
+ * Use eselect news read to view new items.
+

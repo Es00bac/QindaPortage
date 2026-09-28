@@ -1,0 +1,34 @@
+[desktop] Local copy of remote index is up-to-date and will be used.
+[gentoo] Local copy of remote index is within TTL and will be used.
+WARNING: One or more repositories have missing repo_name entries:
+
+	/var/db/repos/steam-overlay/profiles/repo_name
+
+NOTE: Each repo_name entry should be a plain text file containing a
+unique name for the repository on the first line.
+
+
+
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  .
+
+!!! Problem resolving dependencies for media-video/mpv
+... done!
+Dependency resolution took 1.71 s (backtrack: 0/20).
+
+
+!!! The ebuild selected to satisfy "media-video/mpv" has unmet requirements.
+- media-video/mpv-0.41.0-r2::gentoo USE="alsa archive bluray cdda cli drm dvd egl iconv jpeg lcms libmpv lua pipewire pulseaudio rubberband uchardet vaapi vulkan xv zimg zlib -X (-aqua) (-coreaudio) -debug -dvb -gamepad -jack -javascript -libcaca -nvenc -openal -sdl (-selinux) -sixel -sndio -soc -test -tools -vdpau -wayland" ABI_X86="(64)" LUA_SINGLE_TARGET="(luajit) (-lua5-1)" PYTHON_SINGLE_TARGET="python3_14 -python3_12 -python3_13"
+
+  The following REQUIRED_USE flag constraints are unsatisfied:
+    vulkan? ( any-of ( X wayland ) ) xv? ( X )
+
+  The above constraints are a subset of the following complete expression:
+    exactly-one-of ( python_single_target_python3_12 python_single_target_python3_13 python_single_target_python3_14 ) any-of ( cli libmpv ) egl? ( any-of ( X drm wayland ) ) lua? ( exactly-one-of ( lua_single_target_luajit lua_single_target_lua5-1 ) ) nvenc? ( any-of ( egl vulkan ) ) test? ( cli ) tools? ( cli ) uchardet? ( iconv ) vaapi? ( any-of ( X drm wayland ) ) vdpau? ( X ) vulkan? ( any-of ( X wayland ) ) xv? ( X )
+
+ * waiting for lock on /var/lib/gentoo/news/.news-gentoo.unread.portage_lockfile ...           [ ok ]
+
+ * IMPORTANT: 1 news items need reading for repository 'gentoo'.
+ * Use eselect news read to view new items.
+

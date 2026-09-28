@@ -1,0 +1,30 @@
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  ... done!
+Dependency resolution took 3.10 s (backtrack: 0/20).
+
+[ebuild  N    ~] app-misc/newtool-0.9::guru  USE="gui -test" 120 KiB
+[ebuild   R    ] dev-libs/baz-2.1::gentoo  USE="ssl* -static-libs" 300 KiB
+
+Total: 2 packages (1 new, 1 reinstall), Size of downloads: 420 KiB
+
+The following keyword changes are necessary to proceed:
+ (see "package.accept_keywords" in the portage(5) man page for more details)
+# required by app-misc/newtool (argument)
+=app-misc/newtool-0.9 ~amd64
+
+The following USE changes are necessary to proceed:
+ (see "package.use" in the portage(5) man page for more details)
+# required by app-misc/newtool-0.9::guru
+# required by app-misc/newtool (argument)
+>=dev-libs/baz-2.1 ssl
+
+The following license changes are necessary to proceed:
+ (see "package.license" in the portage(5) man page for more details)
+# required by app-misc/newtool (argument)
+>=app-misc/newtool-0.9 Newtool-EULA
+
+Use --autounmask-write to write changes to config files (honoring
+CONFIG_PROTECT). Carefully examine the list of proposed changes,
+paying special attention to mask or keyword changes that may expose
+experimental or unstable packages.

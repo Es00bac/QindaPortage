@@ -1,0 +1,16 @@
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  ... done!
+Dependency resolution took 2.00 s (backtrack: 0/20).
+
+[ebuild  N     ] app-misc/new-1.0::gentoo  0 KiB
+[blocks B      ] app-misc/old ("app-misc/old" is soft blocking app-misc/new-1.0)
+
+Total: 1 package (1 new), Size of downloads: 0 KiB
+Conflict: 1 block (1 unsatisfied)
+
+ * Error: The above package list contains packages which cannot be
+ * installed at the same time on the same system.
+
+  (app-misc/old-1.0:0/0::gentoo, installed) pulled in by
+    app-misc/old required by @selected

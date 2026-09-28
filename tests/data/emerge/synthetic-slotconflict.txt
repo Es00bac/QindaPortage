@@ -1,0 +1,22 @@
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  ... done!
+Dependency resolution took 4.02 s (backtrack: 20/20).
+
+[ebuild     U  ] dev-libs/foo-2.0:0/2::gentoo [1.5:0/1::gentoo] USE="ssl -test" 900 KiB
+
+!!! Multiple package instances within a single package slot have been pulled
+!!! into the dependency graph, resulting in a slot conflict:
+
+dev-libs/foo:0
+
+  (dev-libs/foo-2.0:0/2::gentoo, ebuild scheduled for merge) USE="ssl -test" pulled in by
+    >=dev-libs/foo-2 required by (app-misc/bar-1.0:0/0::gentoo, ebuild scheduled for merge) USE=""
+    ^^^^^^^^^^^^^^^^
+
+  (dev-libs/foo-1.5:0/1::gentoo, installed) USE="ssl -test" pulled in by
+    <dev-libs/foo-2 required by (app-misc/baz-3.1:0/0::guru, installed) USE=""
+    ^^^^^^^^^^^^^^^
+
+It may be possible to solve this problem by using package.mask to
+prevent one of those packages from being selected.

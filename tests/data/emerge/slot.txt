@@ -1,0 +1,30 @@
+[desktop] Local copy of remote index is up-to-date and will be used.
+[gentoo] Local copy of remote index is within TTL and will be used.
+WARNING: One or more repositories have missing repo_name entries:
+
+	/var/db/repos/steam-overlay/profiles/repo_name
+
+NOTE: Each repo_name entry should be a plain text file containing a
+unique name for the repository on the first line.
+
+
+
+These are the packages that would be merged, in reverse order:
+
+Calculating dependencies  ... done!
+Dependency resolution took 6.90 s (backtrack: 0/20).
+
+[binary  N g   ] dev-python/pip-26.1.2-r1-4::gentoo  USE="(test-rust) -test" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_15)" 780 KiB
+[ebuild  NS    ] dev-lang/python-3.12.14:3.12::gentoo [3.14.7:3.14::gentoo] USE="bluetooth ensurepip gdbm ncurses readline sqlite ssl -debug -examples -libedit -pgo -test -tk -valgrind -verify-sig (-build%) (-jit%) (-tail-call-interp%)" LLVM_SLOT="(-19%*)" 20,347 KiB
+[nomerge       ] dev-python/pip-26.1.2-r1-4::gentoo  USE="(test-rust) -test" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_15)" 
+[binary  N g   ]  dev-python/resolvelib-1.2.1-4::gentoo  USE="-test" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_14t) (-python3_15) (-python3_15t)" 80 KiB
+[binary  N g   ]  dev-python/cachecontrol-0.14.3-4::gentoo  USE="-test -verify-provenance" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_15)" 90 KiB
+[binary  N g   ]   dev-python/msgpack-1.2.1-1::gentoo  USE="native-extensions -debug -test -verify-provenance" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_14t) (-python3_15) (-python3_15t)" 130 KiB
+[binary  N g   ]  dev-python/pyproject-hooks-1.2.0-19::gentoo  USE="-test" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_14t) (-python3_15) (-python3_15t)" 70 KiB
+[binary  N g   ]  dev-python/dependency-groups-1.3.1-4::gentoo  USE="-test -verify-provenance" PYTHON_TARGETS="python3_14 -python3_12 -python3_13 (-python3_14t) (-python3_15) (-python3_15t)" 60 KiB
+
+Total: 7 packages (6 new, 1 in new slot, 6 binaries), Size of downloads: 21,557 KiB
+
+ * IMPORTANT: 1 news items need reading for repository 'gentoo'.
+ * Use eselect news read to view new items.
+

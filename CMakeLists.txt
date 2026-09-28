@@ -27,6 +27,8 @@ add_library(qportage_core STATIC
     src/core/atom.h
     src/core/depspec.cpp
     src/core/depspec.h
+    src/core/emergeplan.cpp
+    src/core/emergeplan.h
     src/core/packagegraph.cpp
     src/core/packagegraph.h
     src/core/portageconfig.cpp
