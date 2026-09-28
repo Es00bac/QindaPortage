@@ -9,6 +9,8 @@
 #include <QJsonArray>
 #include <QSettings>
 
+#include <algorithm>
+
 namespace QindaPortage::App {
 
 using namespace Ops;
@@ -30,6 +32,11 @@ PlanModel::PlanModel(QObject *parent)
     : QObject(parent)
 {
     m_executor.setCommand(Executor::defaultCommand(sourceTree()));
+    // AGENT-NOTE: the user's "prompt once, keep it while I'm working" wish
+    // (2026-09-28): a helper session authenticated once through pkexec,
+    // ended after this many idle minutes (polkit's own keep is a fixed ~5).
+    m_executor.setSessionIdleSeconds(60 * std::clamp(QSettings().value(QStringLiteral("helper/sessionIdleMinutes"), 15).toInt(), 1, 240));
+    connect(&m_executor, &Executor::sessionChanged, this, &PlanModel::sessionChanged);
     m_autonomous = QSettings().value(QStringLiteral("assistant/autonomous"), true).toBool();
     connect(&m_runner, &PretendRunner::stageChanged, this, [this](const QString &stage) {
         m_stage = stage;
@@ -321,6 +328,16 @@ QVariantMap PlanModel::highlightMap(const Core::EmergePlan &plan)
         }
     }
     return out;
+}
+
+void PlanModel::setSessionIdleMinutes(int minutes)
+{
+    minutes = std::clamp(minutes, 1, 240);
+    if (minutes == sessionIdleMinutes()) return;
+    QSettings().setValue(QStringLiteral("helper/sessionIdleMinutes"), minutes);
+    // Takes effect for the next session; a running helper keeps its timeout.
+    m_executor.setSessionIdleSeconds(60 * minutes);
+    Q_EMIT sessionChanged();
 }
 
 void PlanModel::setAutonomous(bool on)

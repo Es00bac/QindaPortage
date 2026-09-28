@@ -3,6 +3,7 @@
 
 #include <QFile>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -49,6 +50,44 @@ class TstExecutor : public QObject
     }
 
 private Q_SLOTS:
+    void sessionHandlesSeveralTransactions()
+    {
+        // A fake `serve` helper: one process answers every request line.
+        const QString path = tmp.filePath(QStringLiteral("serve-helper"));
+        QFile f(path);
+        QVERIFY_OPEN(f);
+        f.write(QStringLiteral("#!/bin/sh\necho \"$*\" >> %1/serve-args\necho '{\"event\":\"ready\"}'\nn=0\n"
+                               "while read -r line; do n=$((n+1)); echo \"$line\" >> %1/requests; "
+                               "echo \"{\\\"event\\\":\\\"result\\\",\\\"ok\\\":true,\\\"txn\\\":\\\"t$n\\\",\\\"error\\\":\\\"\\\"}\"; "
+                               "echo '{\"event\":\"ready\"}'; done\n")
+                    .arg(tmp.path()).toUtf8());
+        f.close();
+        f.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+
+        Executor ex;
+        ex.setCommand({path, {}});
+        ex.setSessionIdleSeconds(60);
+        QSignalSpy finished(&ex, &Executor::finished);
+        QSignalSpy session(&ex, &Executor::sessionChanged);
+        QVERIFY(ex.start(plan()));
+        QVERIFY(finished.wait(5000));
+        QCOMPARE(finished.last().at(1).toString(), QStringLiteral("t1"));
+        QVERIFY(ex.sessionActive());
+        QVERIFY(!ex.isRunning());
+        QVERIFY(ex.revert(QStringLiteral("20260928-120000-abcd")));
+        QVERIFY(finished.wait(5000));
+        QCOMPARE(finished.last().at(1).toString(), QStringLiteral("t2"));
+        QCOMPARE(read("serve-args").trimmed(), QStringLiteral("--idle-timeout 60 serve")); // one process
+        const QStringList requests = read("requests").trimmed().split(QLatin1Char('\n'));
+        QCOMPARE(requests.size(), 2);
+        QCOMPARE(QJsonDocument::fromJson(requests.at(0).toUtf8()).object().value(QStringLiteral("command")).toString(),
+                 QStringLiteral("apply"));
+        QCOMPARE(QJsonDocument::fromJson(requests.at(1).toUtf8()).object().value(QStringLiteral("txn")).toString(),
+                 QStringLiteral("20260928-120000-abcd"));
+        ex.endSession();
+        QTRY_VERIFY_WITH_TIMEOUT(!ex.sessionActive(), 5000);
+        QVERIFY(session.size() >= 2);
+    }
     void applyStreamsEvents()
     {
         Executor ex;

@@ -16,15 +16,6 @@ Executor::Executor(QObject *parent)
 {
 }
 
-Executor::~Executor()
-{
-    if (m_process) {
-        m_process->disconnect(this);
-        m_process->terminate();
-        m_process->waitForFinished(3000);
-    }
-}
-
 Executor::Command Executor::defaultCommand(const QString &sourceTree)
 {
     const QString installed = QString::fromLatin1(InstalledHelper);
@@ -49,7 +40,9 @@ bool Executor::start(const Plan &plan, QString *error)
     if (copy.id.isEmpty()) copy.id = Plan::newId();
     if (!copy.created.isValid()) copy.created = QDateTime::currentDateTimeUtc();
     m_txn = copy.id;
-    return launch({QStringLiteral("apply")}, copy.toJsonBytes() + '\n', error);
+    return launch({QStringLiteral("apply")}, copy.toJsonBytes() + '\n',
+                  QJsonObject{{QStringLiteral("command"), QStringLiteral("apply")}, {QStringLiteral("plan"), copy.toJson()}},
+                  error);
 }
 
 bool Executor::revert(const QString &txn, QString *error)
@@ -60,43 +53,73 @@ bool Executor::revert(const QString &txn, QString *error)
         return false;
     }
     m_txn = txn;
-    return launch({QStringLiteral("revert"), txn}, {}, error);
+    return launch({QStringLiteral("revert"), txn}, {},
+                  QJsonObject{{QStringLiteral("command"), QStringLiteral("revert")}, {QStringLiteral("txn"), txn}}, error);
 }
 
-bool Executor::launch(const QStringList &subcommand, const QByteArray &input, QString *error)
+bool Executor::launch(const QStringList &subcommand, const QByteArray &input, const QJsonObject &request,
+                      QString *error)
 {
-    if (m_process) {
+    const bool session = m_sessionIdleSeconds > 0;
+    if (m_busy || (!session && m_process)) {
         if (error) *error = QStringLiteral("a transaction is already running");
         return false;
     }
     Q_EMIT aboutToStart();
-    m_buffer.clear();
     m_stderrTail.clear();
     m_gotResult = false;
-    m_process = new QProcess(this);
-    connect(m_process, &QProcess::readyReadStandardOutput, this, &Executor::readOutput);
-    connect(m_process, &QProcess::readyReadStandardError, this, [this] {
-        const QStringList lines = QString::fromUtf8(m_process->readAllStandardError())
-                                      .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        for (const QString &l : lines) {
-            Q_EMIT logLine(l);
-            m_stderrTail.append(l);
+    if (!m_process) {
+        m_buffer.clear();
+        m_process = new QProcess(this);
+        connect(m_process, &QProcess::readyReadStandardOutput, this, &Executor::readOutput);
+        connect(m_process, &QProcess::readyReadStandardError, this, [this] {
+            const QStringList lines = QString::fromUtf8(m_process->readAllStandardError())
+                                          .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+            for (const QString &l : lines) {
+                Q_EMIT logLine(l);
+                m_stderrTail.append(l);
+            }
+            while (m_stderrTail.size() > 8) m_stderrTail.removeFirst();
+        });
+        connect(m_process, &QProcess::finished, this, &Executor::processFinished);
+        const QStringList args = session
+            ? QStringList{QStringLiteral("--idle-timeout"), QString::number(m_sessionIdleSeconds), QStringLiteral("serve")}
+            : subcommand;
+        m_process->start(m_command.program, m_command.arguments + args);
+        if (!m_process->waitForStarted(10000)) {
+            const QString why = QStringLiteral("cannot start %1: %2").arg(m_command.program, m_process->errorString());
+            delete m_process;
+            m_process = nullptr;
+            if (error) *error = why;
+            return false;
         }
-        while (m_stderrTail.size() > 8) m_stderrTail.removeFirst();
-    });
-    connect(m_process, &QProcess::finished, this, &Executor::processFinished);
-    m_process->start(m_command.program, m_command.arguments + subcommand);
-    if (!m_process->waitForStarted(10000)) {
-        const QString why = QStringLiteral("cannot start %1: %2").arg(m_command.program, m_process->errorString());
-        delete m_process;
-        m_process = nullptr;
-        if (error) *error = why;
-        return false;
+        if (session) Q_EMIT sessionChanged();
     }
-    if (!input.isEmpty()) m_process->write(input);
-    m_process->closeWriteChannel();
+    if (session) {
+        m_process->write(QJsonDocument(request).toJson(QJsonDocument::Compact) + '\n');
+    } else {
+        if (!input.isEmpty()) m_process->write(input);
+        m_process->closeWriteChannel();
+    }
+    m_busy = true;
     Q_EMIT runningChanged();
     return true;
+}
+
+void Executor::endSession()
+{
+    // EOF on its stdin ends the helper's serve loop; it runs as root, so it
+    // is asked to leave rather than signalled.
+    if (m_process && !m_busy && m_sessionIdleSeconds > 0) m_process->closeWriteChannel();
+}
+
+Executor::~Executor()
+{
+    if (m_process) {
+        m_process->disconnect(this);
+        m_process->closeWriteChannel();
+        m_process->waitForFinished(3000);
+    }
 }
 
 void Executor::readOutput()
@@ -132,7 +155,14 @@ void Executor::handleLine(const QByteArray &line)
         m_gotResult = true;
         const QString txn = o.value(QStringLiteral("txn")).toString();
         if (!txn.isEmpty()) m_txn = txn;
+        // In a session the helper stays; the transaction is over now.
+        if (m_sessionIdleSeconds > 0) {
+            m_busy = false;
+            Q_EMIT runningChanged();
+        }
         Q_EMIT finished(o.value(QStringLiteral("ok")).toBool(), m_txn, o.value(QStringLiteral("error")).toString());
+    } else if (event == QLatin1String("bye")) {
+        Q_EMIT logLine(QStringLiteral("root session ended (%1)").arg(o.value(QStringLiteral("reason")).toString()));
     }
 }
 
@@ -141,7 +171,7 @@ void Executor::processFinished(int exitCode, QProcess::ExitStatus status)
     readOutput();
     if (!m_buffer.trimmed().isEmpty()) handleLine(m_buffer);
     m_buffer.clear();
-    if (!m_gotResult) {
+    if (m_busy && !m_gotResult) {
         // pkexec: 126 = dismissed, 127 = not authorized; sudo -n: 1.
         QString why = status == QProcess::CrashExit ? QStringLiteral("the helper was killed")
                                                     : QStringLiteral("the helper exited with %1").arg(exitCode);
@@ -153,7 +183,9 @@ void Executor::processFinished(int exitCode, QProcess::ExitStatus status)
     }
     m_process->deleteLater();
     m_process = nullptr;
+    m_busy = false;
     Q_EMIT runningChanged();
+    if (m_sessionIdleSeconds > 0) Q_EMIT sessionChanged();
 }
 
 void Executor::cancel()

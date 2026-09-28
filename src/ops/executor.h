@@ -23,6 +23,8 @@ class Executor final : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool running READ isRunning NOTIFY runningChanged)
+    // A pkexec'd helper kept alive between transactions (session mode).
+    Q_PROPERTY(bool sessionActive READ sessionActive NOTIFY sessionChanged)
 
 public:
     // The helper invocation without its subcommand, e.g.
@@ -50,7 +52,17 @@ public:
     bool revert(const QString &txn, QString *error = nullptr);
     // Terminates the helper (it journals the transaction as interrupted).
     void cancel();
-    bool isRunning() const { return m_process != nullptr; }
+    bool isRunning() const { return m_busy; }
+    // Session mode (seconds > 0): the helper is started once with
+    // `serve --idle-timeout <seconds>` and handles every later transaction
+    // over the same pipe, so pkexec authenticates once per session. The
+    // helper exits after that long without a request, on endSession(), or
+    // when this object is destroyed. 0 = one helper process per transaction.
+    // AGENT-CONTRACT: helper/qindaportage-apply serve; docs/helper.md.
+    void setSessionIdleSeconds(int seconds) { m_sessionIdleSeconds = seconds; }
+    int sessionIdleSeconds() const { return m_sessionIdleSeconds; }
+    bool sessionActive() const { return m_sessionIdleSeconds > 0 && m_process != nullptr; }
+    void endSession();
     QString currentTxn() const { return m_txn; }
 
     // Journal entries, newest first. Unreadable or malformed files are skipped.
@@ -59,6 +71,7 @@ public:
 Q_SIGNALS:
     void aboutToStart();
     void runningChanged();
+    void sessionChanged();
     void stepStarted(int index, const QString &text);
     void logLine(const QString &line);
     // Revert only: the helper's suggested commands to undo merged packages.
@@ -66,7 +79,7 @@ Q_SIGNALS:
     void finished(bool ok, const QString &txn, const QString &error);
 
 private:
-    bool launch(const QStringList &subcommand, const QByteArray &input, QString *error);
+    bool launch(const QStringList &subcommand, const QByteArray &input, const QJsonObject &request, QString *error);
     void readOutput();
     void handleLine(const QByteArray &line);
     void processFinished(int exitCode, QProcess::ExitStatus status);
@@ -76,6 +89,8 @@ private:
     QByteArray m_buffer;
     QString m_txn;
     bool m_gotResult = false;
+    bool m_busy = false;
+    int m_sessionIdleSeconds = 0;
     QStringList m_stderrTail;
 };
 

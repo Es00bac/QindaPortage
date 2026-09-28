@@ -124,3 +124,25 @@ reverted once.
 SIGTERM or SIGINT (`Executor::cancel()`) terminates the running emerge. The
 transaction is journaled with `error: "interrupted"` and its `post`
 snapshot, so it can still be reverted.
+
+## Sessions
+
+`qindaportage-apply [--idle-timeout SECONDS] serve` keeps one authenticated
+helper for many transactions (AGENT-CONTRACT: `Ops::Executor` session mode).
+The GUI starts it once through pkexec, which means one polkit prompt per
+session, or none with USE=wheel-nopasswd. It then writes one request per line:
+
+```json
+{"command":"apply","plan":{...}}
+{"command":"revert","txn":"20260928-120000-abcd"}
+```
+
+Each request produces the usual `step`/`log`/`undo` events and its `result`,
+followed by `{"event":"ready"}`. The first `ready` also reports
+`idle_timeout`. The transaction lock is taken per request. The session ends
+in three cases:
+
+- no request for `idle_timeout` seconds (`{"event":"bye","reason":"idle"}`);
+  the default is 15 minutes, set with Settings ▸ "Root session idle";
+- EOF on stdin: the GUI's "end root session", or the app quitting;
+- SIGTERM, which also stops a running emerge.

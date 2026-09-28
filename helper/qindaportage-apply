@@ -22,6 +22,7 @@ import os
 import re
 import secrets
 import shlex
+import select
 import signal
 import subprocess
 import sys
@@ -67,6 +68,7 @@ class Helper:
         self.emerge = shlex.split(args.emerge_cmd)
         self.ebuild = shlex.split(args.ebuild_cmd)
         self.child = None
+        self.stopping = False  # set by SIGTERM/SIGINT; ends a serve session
         self.env = {k: v for k, v in os.environ.items()
                     if k not in DROP_ENV and not k.startswith('PORTAGE_')}
         self.env['PATH'] = SAFE_PATH if not args.root else os.environ.get('PATH', SAFE_PATH)
@@ -377,6 +379,61 @@ def undo_commands(entry):
     return out
 
 
+def serve(helper, idle_timeout):
+    """One authenticated session: a request per line on stdin,
+    {"command": "apply", "plan": {...}} or {"command": "revert", "txn": "..."},
+    each answered with the usual events and its "result", then {"event":
+    "ready"}. Exits on EOF (the GUI closed the pipe), on SIGTERM, or after
+    `idle_timeout` seconds without a request. AGENT-CONTRACT: Executor's
+    session mode (src/ops/executor.cpp), docs/helper.md "Sessions"."""
+    fd = sys.stdin.fileno()
+    buf = b''
+    lock_path = os.path.join(helper.state.state_dir, 'lock')
+    emit(event='ready', idle_timeout=idle_timeout)
+    while True:
+        while b'\n' not in buf:
+            try:
+                ready, _, _ = select.select([fd], [], [], idle_timeout)
+            except Interrupted:
+                return 0
+            if not ready:
+                emit(event='bye', reason='idle')
+                return 0
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return 0
+            buf += chunk
+        line, buf = buf.split(b'\n', 1)
+        if not line.strip():
+            continue
+        try:
+            request = json.loads(line.decode('utf-8'))
+            command = request.get('command')
+        except (ValueError, AttributeError):
+            emit(event='result', ok=False, txn='', error='bad request')
+            emit(event='ready')
+            continue
+        with open(lock_path, 'w') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except OSError:
+                emit(event='result', ok=False, txn='', error='another transaction is running')
+                emit(event='ready')
+                continue
+            try:
+                if command == 'apply':
+                    helper.apply(json.dumps(request.get('plan')))
+                elif command == 'revert':
+                    helper.revert(str(request.get('txn') or ''))
+                else:
+                    emit(event='result', ok=False, txn='', error='unknown command %r' % command)
+            except Interrupted:
+                return 0
+        if helper.stopping:
+            return 0
+        emit(event='ready')
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog='qindaportage-apply')
     parser.add_argument('--root', help='test root prefix (never in production)')
@@ -384,7 +441,9 @@ def main(argv):
     parser.add_argument('--emerge-cmd', default='emerge')
     parser.add_argument('--ebuild-cmd', default='ebuild')
     parser.add_argument('--git', default='git')
-    parser.add_argument('command', choices=('apply', 'revert', 'list', 'show'))
+    parser.add_argument('--idle-timeout', type=int, default=900,
+                        help='serve: exit after this many seconds without a request')
+    parser.add_argument('command', choices=('apply', 'revert', 'list', 'show', 'serve'))
     parser.add_argument('txn', nargs='?')
     args = parser.parse_args(argv)
     if os.geteuid() != 0 and not args.root:
@@ -394,6 +453,7 @@ def main(argv):
     helper = Helper(args)
 
     def on_signal(signum, frame):
+        helper.stopping = True
         if helper.child is not None:
             helper.child.terminate()
         raise Interrupted()
@@ -401,6 +461,8 @@ def main(argv):
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGINT, on_signal)
     helper.state.ensure()
+    if args.command == 'serve':
+        return serve(helper, max(30, args.idle_timeout))
     with open(os.path.join(helper.state.state_dir, 'lock'), 'w') as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)

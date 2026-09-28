@@ -106,6 +106,23 @@ class HelperTest(unittest.TestCase):
         self.assertEqual(code, 0, proc.stderr)
         self.assertTrue(self.result(events)['ok'])
 
+    def test_serve_session_runs_several_requests(self):
+        plan1 = dict(title='one', goal='g', steps=[
+            {'kind': 'use', 'atom': 'app-misc/tool', 'values': ['gui'], 'rationale': 'first'}])
+        plan2 = dict(title='two', goal='g', steps=[
+            {'kind': 'keyword', 'atom': '=app-misc/tool-2.0', 'values': ['~amd64'], 'rationale': 'second'}])
+        stdin = '\n'.join(json.dumps(r) for r in (
+            {'command': 'apply', 'plan': plan1},
+            {'command': 'apply', 'plan': plan2},
+            {'command': 'bogus'})) + '\n'
+        code, events, proc = self.helper('--idle-timeout', '30', 'serve', stdin=stdin)
+        self.assertEqual(code, 0, proc.stderr)
+        results = [e for e in events if e['event'] == 'result']
+        self.assertEqual([r['ok'] for r in results], [True, True, False])
+        self.assertEqual(sum(1 for e in events if e['event'] == 'ready'), 4)  # start + after each
+        self.assertIn('app-misc/tool gui', self.read('etc/portage/package.use/90-qindaportage'))
+        self.assertIn('=app-misc/tool-2.0 ~amd64', self.read('etc/portage/package.accept_keywords'))
+
     def test_config_steps_and_emerge(self):
         code, events, proc = self.apply([
             {'kind': 'use', 'atom': 'app-misc/tool', 'values': ['+gui', '-ssl'], 'rationale': 'want the GUI\nplease'},

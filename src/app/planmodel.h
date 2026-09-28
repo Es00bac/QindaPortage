@@ -43,6 +43,10 @@ class PlanModel final : public QObject
     // default. High-risk plans need the user regardless (riskReasons).
     Q_PROPERTY(bool autonomous READ autonomous WRITE setAutonomous NOTIFY autonomyChanged)
     Q_PROPERTY(QStringList riskReasons READ riskReasons NOTIFY previewChanged)
+    // The authenticated root helper session (Executor session mode): one
+    // pkexec prompt, then kept until it has been idle this many minutes.
+    Q_PROPERTY(bool sessionActive READ sessionActive NOTIFY sessionChanged)
+    Q_PROPERTY(int sessionIdleMinutes READ sessionIdleMinutes WRITE setSessionIdleMinutes NOTIFY sessionChanged)
 
 public:
     explicit PlanModel(QObject *parent = nullptr);
@@ -55,6 +59,10 @@ public:
     // `gate`, when given, runs once the preview is current and resolved; a
     // non-empty answer refuses the apply with that reason.
     void applyVerified(const ApplyDone &done, const std::function<QString()> &gate = {});
+    bool sessionActive() const { return m_executor.sessionActive(); }
+    int sessionIdleMinutes() const { return m_executor.sessionIdleSeconds() / 60; }
+    void setSessionIdleMinutes(int minutes);
+    Q_INVOKABLE void endSession() { m_executor.endSession(); }
     bool autonomous() const { return m_autonomous; }
     void setAutonomous(bool on);
     // Why this plan needs the user's explicit approval: changes the rules in
@@ -110,6 +118,7 @@ Q_SIGNALS:
     // After an apply: ok, transaction id, error, and the last log lines.
     void applyFinished(bool ok, const QString &txn, const QString &error, const QString &logTail);
     void autonomyChanged();
+    void sessionChanged();
 
 private:
     void touch();

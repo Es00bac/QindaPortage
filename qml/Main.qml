@@ -221,6 +221,15 @@ Tk.AppWindow {
             iconName: "sparkles"
             text: assistant.status
         }
+        Tk.StatusField {
+            objectName: "rootSession"
+            visible: planModel.sessionActive
+            iconName: "lock"
+            text: planModel.applying ? qsTr("root session · applying")
+                                     : qsTr("root session · ends after %1 min idle").arg(planModel.sessionIdleMinutes)
+            tooltip: qsTr("The QindaPortage helper is authenticated and waiting for the next transaction. Click to end it now.")
+            onClicked: planModel.endSession()
+        }
         Tk.Spacer {}
         Tk.StatusField {
             actionable: false
@@ -367,13 +376,51 @@ Tk.AppWindow {
         profile: systemModel.revision >= 0 ? toolbox.systemProfile() : ""
     }
 
-    Tk.MessageDialog {
+    Tk.Dialog {
         id: settingsDialog
+        objectName: "settingsDialog"
         title: qsTr("Settings")
-        variant: "info"
-        text: qsTr("Model: %1. Idle unload after %2 s.").arg(llm.modelLabel.length > 0 ? llm.modelLabel : qsTr("chosen at load time"))
-              .arg(llm.idleSeconds)
-        primaryText: qsTr("Close")
+        subtitle: qsTr("How the assistant works and how long the root session stays open")
+        primaryText: qsTr("Save")
+        secondaryText: qsTr("Cancel")
+        dialogWidth: 520
+        onAboutToShow: {
+            idleField.value = planModel.sessionIdleMinutes
+            modelIdleField.value = llm.idleSeconds
+            actBox.checked = planModel.autonomous
+        }
+        onAccepted: {
+            planModel.sessionIdleMinutes = idleField.value
+            llm.idleSeconds = modelIdleField.value
+            planModel.autonomous = actBox.checked
+        }
+
+        Tk.Grid {
+            columns: "auto 1fr"
+            columnGap: Tk.Theme.space.md
+            rowGap: Tk.Theme.space.sm
+            alignItems: Tk.Grid.Center
+
+            Tk.Caption { text: qsTr("Act on my behalf") }
+            Tk.Switch {
+                id: actBox
+                tooltip: qsTr("The assistant applies verified plans itself; risky ones still wait for you")
+            }
+            Tk.Caption { text: qsTr("Root session idle (min)") }
+            Tk.NumberField {
+                id: idleField
+                from: 1
+                to: 240
+                tooltip: qsTr("After authenticating once, the helper stays available until it has been idle this long")
+            }
+            Tk.Caption { text: qsTr("Unload model after (s)") }
+            Tk.NumberField {
+                id: modelIdleField
+                from: 30
+                to: 3600
+                tooltip: qsTr("The local model gives its memory back after this long without a request")
+            }
+        }
     }
 
     Tk.MessageDialog {
